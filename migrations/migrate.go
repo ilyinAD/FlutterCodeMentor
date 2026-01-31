@@ -10,7 +10,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-//go:embed 0001_init_db.sql
+//go:embed 0*.sql
 var embedMigrations embed.FS
 
 func Migrate(cfg *pgxpool.Config) error {

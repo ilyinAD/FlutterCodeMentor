@@ -10,11 +10,13 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 type Server struct {
-	echo *echo.Echo
-	cfg  *config.Config
+	echo   *echo.Echo
+	cfg    *config.Config
+	logger *zap.Logger
 }
 
 type Handlers struct {
@@ -30,6 +32,7 @@ func NewServer(
 	taskHandler *handler.TaskHandler,
 	userHandler *handler.UserHandler,
 	courseHandler *handler.CourseHandler,
+	logger *zap.Logger,
 ) *Server {
 	e := echo.New()
 
@@ -52,9 +55,12 @@ func NewServer(
 		})
 	})
 
+	logger.Info("Server initialized successfully")
+
 	return &Server{
-		echo: e,
-		cfg:  cfg,
+		echo:   e,
+		cfg:    cfg,
+		logger: logger,
 	}
 }
 
@@ -62,15 +68,21 @@ func registerHooks(lc fx.Lifecycle, server *Server) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			addr := fmt.Sprintf(":%s", server.cfg.Server.Port)
+			server.logger.Info("Starting HTTP server",
+				zap.String("address", addr),
+			)
 			go func() {
 				if err := server.echo.Start(addr); err != nil {
-					server.echo.Logger.Info("shutting down the server")
+					server.logger.Info("Shutting down the server")
 				}
 			}()
-			server.echo.Logger.Infof("Server started on %s", addr)
+			server.logger.Info("Server started successfully",
+				zap.String("address", addr),
+			)
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
+			server.logger.Info("Stopping HTTP server")
 			return server.echo.Shutdown(ctx)
 		},
 	})

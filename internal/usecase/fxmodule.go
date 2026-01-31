@@ -12,6 +12,7 @@ func FxModule() fx.Option {
 			NewTaskUseCase,
 			NewUserUseCase,
 			NewCourseUseCase,
+			NewReviewUseCase,
 		),
 	)
 }

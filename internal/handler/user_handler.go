@@ -7,15 +7,18 @@ import (
 	"github.com/ilyin-ad/flutter-code-mentor/api"
 	"github.com/ilyin-ad/flutter-code-mentor/internal/usecase"
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 )
 
 type UserHandler struct {
 	userUseCase usecase.UserUseCase
+	logger      *zap.Logger
 }
 
-func NewUserHandler(userUseCase usecase.UserUseCase) *UserHandler {
+func NewUserHandler(userUseCase usecase.UserUseCase, logger *zap.Logger) *UserHandler {
 	return &UserHandler{
 		userUseCase: userUseCase,
+		logger:      logger,
 	}
 }
 
@@ -28,8 +31,14 @@ type CreateUserRequest struct {
 }
 
 func (h *UserHandler) PostUser(ctx echo.Context) error {
+	h.logger.Info("Received user creation request",
+		zap.String("method", ctx.Request().Method),
+		zap.String("path", ctx.Request().URL.Path),
+	)
+
 	var req CreateUserRequest
 	if err := ctx.Bind(&req); err != nil {
+		h.logger.Warn("Invalid request body", zap.Error(err))
 		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
 			Error: stringPtr("Invalid request body"),
 		})
@@ -47,6 +56,11 @@ func (h *UserHandler) PostUser(ctx echo.Context) error {
 	if err != nil {
 		return h.handleError(ctx, err)
 	}
+
+	h.logger.Info("User created successfully",
+		zap.Int("user_id", resp.UserID),
+		zap.String("email", resp.Email),
+	)
 
 	response := api.UserResponse{
 		UserId:    &resp.UserID,

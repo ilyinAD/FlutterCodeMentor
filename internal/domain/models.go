@@ -70,3 +70,40 @@ type Course struct {
 	IsActive    bool       `db:"is_active"`
 	CreatedAt   time.Time  `db:"created_at"`
 }
+
+type CodeReview struct {
+	ID              int       `db:"id"`
+	SubmissionID    int       `db:"submission_id"`
+	AIModel         string    `db:"ai_model"`
+	OverallStatus   string    `db:"overall_status"`
+	AIConfidence    *float64  `db:"ai_confidence"`
+	ExecutionTimeMs *int      `db:"execution_time_ms"`
+	CreatedAt       time.Time `db:"created_at"`
+}
+
+type ReviewFeedback struct {
+	ID              int       `db:"id"`
+	ReviewID        int       `db:"review_id"`
+	FeedbackType    string    `db:"feedback_type"`
+	FilePath        *string   `db:"file_path"`
+	LineStart       int       `db:"line_start"`
+	LineEnd         *int      `db:"line_end"`
+	CodeSnippet     string    `db:"code_snippet"`
+	SuggestedFix    *string   `db:"suggested_fix"`
+	Description     string    `db:"description"`
+	Severity        int       `db:"severity"`
+	IsResolved      bool      `db:"is_resolved"`
+	TeacherComment  *string   `db:"teacher_comment"`
+	TeacherApproved *bool     `db:"teacher_approved"`
+	CreatedAt       time.Time `db:"created_at"`
+}
+
+type TaskCriteria struct {
+	ID                   int       `db:"id"`
+	TaskID               int       `db:"task_id"`
+	CriterionName        string    `db:"criterion_name"`
+	CriterionDescription string    `db:"criterion_description"`
+	IsMandatory          bool      `db:"is_mandatory"`
+	Weight               int       `db:"weight"`
+	CreatedAt            time.Time `db:"created_at"`
+}

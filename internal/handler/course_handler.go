@@ -8,15 +8,18 @@ import (
 	"github.com/ilyin-ad/flutter-code-mentor/api"
 	"github.com/ilyin-ad/flutter-code-mentor/internal/usecase"
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 )
 
 type CourseHandler struct {
 	courseUseCase usecase.CourseUseCase
+	logger        *zap.Logger
 }
 
-func NewCourseHandler(courseUseCase usecase.CourseUseCase) *CourseHandler {
+func NewCourseHandler(courseUseCase usecase.CourseUseCase, logger *zap.Logger) *CourseHandler {
 	return &CourseHandler{
 		courseUseCase: courseUseCase,
+		logger:        logger,
 	}
 }
 
@@ -30,8 +33,14 @@ type CreateCourseRequest struct {
 }
 
 func (h *CourseHandler) PostCourses(ctx echo.Context) error {
+	h.logger.Info("Received course creation request",
+		zap.String("method", ctx.Request().Method),
+		zap.String("path", ctx.Request().URL.Path),
+	)
+
 	var req CreateCourseRequest
 	if err := ctx.Bind(&req); err != nil {
+		h.logger.Warn("Invalid request body", zap.Error(err))
 		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
 			Error: stringPtr("Invalid request body"),
 		})
@@ -55,6 +64,10 @@ func (h *CourseHandler) PostCourses(ctx echo.Context) error {
 	if err != nil {
 		return h.handleError(ctx, err)
 	}
+
+	h.logger.Info("Course created successfully",
+		zap.Int("course_id", resp.CourseID),
+	)
 
 	response := api.CourseResponse{
 		CourseId:    &resp.CourseID,

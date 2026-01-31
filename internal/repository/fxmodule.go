@@ -12,6 +12,7 @@ func FxModule() fx.Option {
 			NewTaskRepository,
 			NewUserRepository,
 			NewCourseRepository,
+			NewReviewRepository,
 		),
 	)
 }

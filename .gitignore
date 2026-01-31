@@ -1,2 +1,6 @@
 .vscode/
 .env
+curl_queries
+in.txt
+api/oapi.gen.go
+.*

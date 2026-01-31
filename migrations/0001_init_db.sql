@@ -75,7 +75,7 @@ CREATE TABLE submissions (
 CREATE TABLE code_reviews (
   id SERIAL PRIMARY KEY,
   submission_id INT NOT NULL UNIQUE REFERENCES submissions(id) ON DELETE CASCADE,
-  ai_model VARCHAR(50) NOT NULL DEFAULT 'gpt-4-turbo',
+  ai_model VARCHAR(50) NOT NULL DEFAULT 'deepseek',
   overall_status VARCHAR(20) NOT NULL CHECK (
     overall_status IN ('passed', 'failed', 'needs_improvement')
   ),
@@ -90,10 +90,11 @@ CREATE TABLE review_feedback (
   review_id INT NOT NULL REFERENCES code_reviews(id) ON DELETE CASCADE,
   feedback_type VARCHAR(20) NOT NULL CHECK (
     feedback_type IN (
-      'critical_error', 'logic_error', 'style_issue', 
+      'critical_error', 'logic_error', 'style_issue',
       'performance', 'security_risk', 'improvement'
     )
   ),
+  file_path VARCHAR(500),
   line_start INT NOT NULL CHECK (line_start > 0),
   line_end INT CHECK (line_end >= line_start),
   code_snippet TEXT NOT NULL,
@@ -102,6 +103,7 @@ CREATE TABLE review_feedback (
   severity INT NOT NULL DEFAULT 3 CHECK (severity BETWEEN 1 AND 5),
   is_resolved BOOLEAN DEFAULT false,
   teacher_comment TEXT,
+  teacher_approved BOOLEAN DEFAULT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
 

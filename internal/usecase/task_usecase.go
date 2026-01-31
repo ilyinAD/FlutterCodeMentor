@@ -44,6 +44,14 @@ type CreateTaskRequest struct {
 	Description string
 	Deadline    time.Time
 	MaxScore    int
+	Criteria    []TaskCriteriaRequest
+}
+
+type TaskCriteriaRequest struct {
+	CriterionName        string
+	CriterionDescription string
+	IsMandatory          bool
+	Weight               int
 }
 
 type CreateTaskResponse struct {
@@ -78,6 +86,21 @@ func (uc *taskUseCase) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	taskID, err := uc.taskRepo.Create(ctx, task)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
+	}
+
+	for _, criteriaReq := range req.Criteria {
+		criteria := &domain.TaskCriteria{
+			TaskID:               taskID,
+			CriterionName:        criteriaReq.CriterionName,
+			CriterionDescription: criteriaReq.CriterionDescription,
+			IsMandatory:          criteriaReq.IsMandatory,
+			Weight:               criteriaReq.Weight,
+		}
+
+		_, err := uc.taskRepo.CreateCriteria(ctx, criteria)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create task criteria: %w", err)
+		}
 	}
 
 	return &CreateTaskResponse{
@@ -125,6 +148,36 @@ func (uc *taskUseCase) validateTaskRequest(req *CreateTaskRequest) error {
 			Field:   "max_score",
 			Message: "Must be between 1 and 100",
 		})
+	}
+
+	if len(details) > 0 {
+		return &ValidationError{
+			Message: "Validation failed",
+			Details: details,
+		}
+	}
+
+	for i, criteria := range req.Criteria {
+		if len(criteria.CriterionName) < 3 || len(criteria.CriterionName) > 100 {
+			details = append(details, ValidationErrorDetail{
+				Field:   fmt.Sprintf("criteria[%d].criterion_name", i),
+				Message: "Must be between 3 and 100 characters",
+			})
+		}
+
+		if len(criteria.CriterionDescription) < 10 {
+			details = append(details, ValidationErrorDetail{
+				Field:   fmt.Sprintf("criteria[%d].criterion_description", i),
+				Message: "Must be at least 10 characters",
+			})
+		}
+
+		if criteria.Weight < 1 || criteria.Weight > 100 {
+			details = append(details, ValidationErrorDetail{
+				Field:   fmt.Sprintf("criteria[%d].weight", i),
+				Message: "Must be between 1 and 100",
+			})
+		}
 	}
 
 	if len(details) > 0 {

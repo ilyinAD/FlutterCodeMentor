@@ -7,15 +7,18 @@ import (
 	"github.com/ilyin-ad/flutter-code-mentor/api"
 	"github.com/ilyin-ad/flutter-code-mentor/internal/usecase"
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 )
 
 type SubmissionHandler struct {
 	submissionUseCase usecase.SubmissionUseCase
+	logger            *zap.Logger
 }
 
-func NewSubmissionHandler(submissionUseCase usecase.SubmissionUseCase) *SubmissionHandler {
+func NewSubmissionHandler(submissionUseCase usecase.SubmissionUseCase, logger *zap.Logger) *SubmissionHandler {
 	return &SubmissionHandler{
 		submissionUseCase: submissionUseCase,
+		logger:            logger,
 	}
 }
 
@@ -28,12 +31,24 @@ type CreateSubmissionRequest struct {
 }
 
 func (h *SubmissionHandler) PostSubmission(ctx echo.Context) error {
+	h.logger.Info("Received submission creation request",
+		zap.String("method", ctx.Request().Method),
+		zap.String("path", ctx.Request().URL.Path),
+	)
+
 	var req CreateSubmissionRequest
 	if err := ctx.Bind(&req); err != nil {
+		h.logger.Warn("Invalid request body", zap.Error(err))
 		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
 			Error: stringPtr("Invalid request body"),
 		})
 	}
+
+	h.logger.Info("Creating submission",
+		zap.Int("task_id", req.TaskID),
+		zap.Int("user_id", req.UserID),
+		zap.String("submission_type", req.SubmissionType),
+	)
 
 	usecaseReq := &usecase.CreateSubmissionRequest{
 		TaskID:         req.TaskID,
@@ -47,6 +62,10 @@ func (h *SubmissionHandler) PostSubmission(ctx echo.Context) error {
 	if err != nil {
 		return h.handleError(ctx, err)
 	}
+
+	h.logger.Info("Submission created successfully",
+		zap.Int("submission_id", resp.SubmissionID),
+	)
 
 	status := api.Pending
 	response := api.SubmissionResponse{

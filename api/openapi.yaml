@@ -200,7 +200,34 @@ components:
           type: integer
           minimum: 1
           maximum: 100
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskCriteriaRequest"
       additionalProperties: false
+
+    TaskCriteriaRequest:
+      type: object
+      required:
+        - criterion_name
+        - criterion_description
+        - weight
+      properties:
+        criterion_name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        criterion_description:
+          type: string
+          minLength: 10
+        is_mandatory:
+          type: boolean
+          default: true
+        weight:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
 
     TaskResponse:
       type: object
