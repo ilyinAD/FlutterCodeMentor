@@ -15,7 +15,8 @@ type Scheduler struct {
 	logger    *zap.Logger
 }
 
-const kSchedulerDurationJob = 5 * time.Minute
+const kSchedulerDurationJob = 1 * time.Minute
+const kScheduleStartTimeJob = 10 * time.Second
 
 func NewScheduler(reviewUC usecase.ReviewUseCase, logger *zap.Logger) (*Scheduler, error) {
 	s, err := gocron.NewScheduler()
@@ -37,10 +38,13 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		gocron.DurationJob(kSchedulerDurationJob),
 		gocron.NewTask(func() {
 			s.logger.Info("Running scheduled code review task")
-			if err := s.reviewUC.ProcessPendingSubmissions(context.Background()); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			if err := s.reviewUC.ProcessPendingSubmissions(ctx); err != nil {
 				s.logger.Error("Failed to process pending submissions", zap.Error(err))
 			}
 		}),
+		gocron.WithStartAt(gocron.WithStartDateTime(time.Now().Add(kScheduleStartTimeJob))),
 	)
 
 	if err != nil {

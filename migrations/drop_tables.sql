@@ -1,1 +1,1 @@
-drop table code_reviews, course_enrollments, courses, goose_db_version, review_feedback, submissions, tasks, users;
+drop table code_reviews, course_enrollments, courses, goose_db_version, review_feedback, submissions, task_criteria, tasks, users;

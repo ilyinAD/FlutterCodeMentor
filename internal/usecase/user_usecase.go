@@ -120,12 +120,12 @@ func (uc *userUseCase) validateUserRequest(req *CreateUserRequest) error {
 		})
 	}
 
-	if len(req.LastName) < 2 || len(req.LastName) > 50 {
-		details = append(details, ValidationErrorDetail{
-			Field:   "last_name",
-			Message: "Must be between 2 and 50 characters",
-		})
-	}
+	// if len(req.LastName) < 2 || len(req.LastName) > 50 {
+	// 	details = append(details, ValidationErrorDetail{
+	// 		Field:   "last_name",
+	// 		Message: "Must be between 2 and 50 characters",
+	// 	})
+	// }
 
 	if len(details) > 0 {
 		return &ValidationError{

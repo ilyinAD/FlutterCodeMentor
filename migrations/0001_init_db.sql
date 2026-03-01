@@ -5,7 +5,7 @@ begin;
 --- Пользователи
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
-  email VARCHAR(255) NOT NULL UNIQUE CHECK (email ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$'),
+  email VARCHAR(255) NOT NULL UNIQUE,
   password_hash VARCHAR(128) NOT NULL,
   role VARCHAR(10) NOT NULL CHECK (role IN ('student', 'teacher', 'admin')),
   first_name VARCHAR(50) NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE users (
 CREATE TABLE courses (
   id SERIAL PRIMARY KEY,
   teacher_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title VARCHAR(100) NOT NULL CHECK (LENGTH(title) >= 3),
+  title VARCHAR(100) NOT NULL,
   description TEXT,
   start_date DATE NOT NULL DEFAULT NOW(),
   end_date DATE CHECK (end_date > start_date),

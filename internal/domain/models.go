@@ -13,6 +13,7 @@ type SubmissionStatus string
 
 const (
 	StatusPending         SubmissionStatus = "pending"
+	StatusProcessing      SubmissionStatus = "processing"
 	StatusAIReviewed      SubmissionStatus = "ai_reviewed"
 	StatusTeacherReviewed SubmissionStatus = "teacher_reviewed"
 	StatusResubmitted     SubmissionStatus = "resubmitted"
@@ -20,37 +21,37 @@ const (
 )
 
 type Submission struct {
-	ID             int              `db:"id"`
-	StudentID      int              `db:"student_id"`
-	TaskID         int              `db:"task_id"`
-	Code           *string          `db:"code"`
-	GithubURL      *string          `db:"github_url"`
-	SubmittedAt    time.Time        `db:"submitted_at"`
-	Score          *float64         `db:"score"`
-	Status         SubmissionStatus `db:"status"`
-	SubmissionType SubmissionType   `db:"submission_type"`
+	ID             int
+	StudentID      int
+	TaskID         int
+	Code           *string
+	GithubURL      *string
+	SubmittedAt    time.Time
+	Score          *float64
+	Status         SubmissionStatus
+	SubmissionType SubmissionType
 }
 
 type Task struct {
-	ID          int        `db:"id"`
-	CourseID    int        `db:"course_id"`
-	Title       string     `db:"title"`
-	Description string     `db:"description"`
-	Deadline    time.Time  `db:"deadline"`
-	MaxScore    int        `db:"max_score"`
-	CreatedAt   time.Time  `db:"created_at"`
-	UpdatedAt   *time.Time `db:"updated_at"`
+	ID          int
+	CourseID    int
+	Title       string
+	Description string
+	Deadline    time.Time
+	MaxScore    int
+	CreatedAt   time.Time
+	UpdatedAt   *time.Time
 }
 
 type User struct {
-	ID           int        `db:"id"`
-	Email        string     `db:"email"`
-	PasswordHash string     `db:"password_hash"`
-	Role         string     `db:"role"`
-	FirstName    string     `db:"first_name"`
-	LastName     string     `db:"last_name"`
-	CreatedAt    time.Time  `db:"created_at"`
-	LastLogin    *time.Time `db:"last_login"`
+	ID           int
+	Email        string
+	PasswordHash string
+	Role         string
+	FirstName    string
+	LastName     string
+	CreatedAt    time.Time
+	LastLogin    *time.Time
 }
 
 type TaskStatus string
@@ -61,49 +62,49 @@ const (
 )
 
 type Course struct {
-	ID          int        `db:"id"`
-	TeacherID   int        `db:"teacher_id"`
-	Title       string     `db:"title"`
-	Description *string    `db:"description"`
-	StartDate   time.Time  `db:"start_date"`
-	EndDate     *time.Time `db:"end_date"`
-	IsActive    bool       `db:"is_active"`
-	CreatedAt   time.Time  `db:"created_at"`
+	ID          int
+	TeacherID   int
+	Title       string
+	Description *string
+	StartDate   time.Time
+	EndDate     *time.Time
+	IsActive    bool
+	CreatedAt   time.Time
 }
 
 type CodeReview struct {
-	ID              int       `db:"id"`
-	SubmissionID    int       `db:"submission_id"`
-	AIModel         string    `db:"ai_model"`
-	OverallStatus   string    `db:"overall_status"`
-	AIConfidence    *float64  `db:"ai_confidence"`
-	ExecutionTimeMs *int      `db:"execution_time_ms"`
-	CreatedAt       time.Time `db:"created_at"`
+	ID              int
+	SubmissionID    int
+	AIModel         string
+	OverallStatus   string
+	AIConfidence    *float64
+	ExecutionTimeMs *int
+	CreatedAt       time.Time
 }
 
 type ReviewFeedback struct {
-	ID              int       `db:"id"`
-	ReviewID        int       `db:"review_id"`
-	FeedbackType    string    `db:"feedback_type"`
-	FilePath        *string   `db:"file_path"`
-	LineStart       int       `db:"line_start"`
-	LineEnd         *int      `db:"line_end"`
-	CodeSnippet     string    `db:"code_snippet"`
-	SuggestedFix    *string   `db:"suggested_fix"`
-	Description     string    `db:"description"`
-	Severity        int       `db:"severity"`
-	IsResolved      bool      `db:"is_resolved"`
-	TeacherComment  *string   `db:"teacher_comment"`
-	TeacherApproved *bool     `db:"teacher_approved"`
-	CreatedAt       time.Time `db:"created_at"`
+	ID              int
+	ReviewID        int
+	FeedbackType    string
+	FilePath        *string
+	LineStart       int
+	LineEnd         *int
+	CodeSnippet     string
+	SuggestedFix    *string
+	Description     string
+	Severity        int
+	IsResolved      bool
+	TeacherComment  *string
+	TeacherApproved *bool
+	CreatedAt       time.Time
 }
 
 type TaskCriteria struct {
-	ID                   int       `db:"id"`
-	TaskID               int       `db:"task_id"`
-	CriterionName        string    `db:"criterion_name"`
-	CriterionDescription string    `db:"criterion_description"`
-	IsMandatory          bool      `db:"is_mandatory"`
-	Weight               int       `db:"weight"`
-	CreatedAt            time.Time `db:"created_at"`
+	ID                   int
+	TaskID               int
+	CriterionName        string
+	CriterionDescription string
+	IsMandatory          bool
+	Weight               int
+	CreatedAt            time.Time
 }

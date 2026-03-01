@@ -127,25 +127,6 @@ components:
           type: string
           format: uri
           pattern: "^https://github.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)/?$"
-      allOf:
-        - if:
-            properties:
-              submission_type:
-                enum: ["code"]
-            required: ["code"]
-          then:
-            required: ["code"]
-            not:
-              required: ["github_url"]
-        - if:
-            properties:
-              submission_type:
-                enum: ["github_link"]
-            required: ["github_url"]
-          then:
-            required: ["github_url"]
-            not:
-              required: ["code"]
 
     SubmissionResponse:
       type: object
@@ -326,18 +307,6 @@ components:
         is_active:
           type: boolean
       additionalProperties: false
-      allOf:
-        - if:
-            properties:
-              end_date:
-                type: string
-            required: [end_date]
-          then:
-            properties:
-              end_date:
-                format: date-time
-            required: [start_date]
-            x-validation: end_date > start_date
 
     CourseResponse:
       type: object

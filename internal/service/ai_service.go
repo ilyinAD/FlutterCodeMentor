@@ -31,7 +31,7 @@ func NewAIService(apiKey, apiURL string, logger *zap.Logger) AIService {
 		apiKey: apiKey,
 		apiURL: apiURL,
 		client: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: 5 * time.Minute,
 		},
 		logger: logger,
 	}
@@ -278,7 +278,11 @@ func (s *aiService) ReviewGitHubProject(ctx context.Context, files map[string]st
 	)
 
 	prompt := s.buildGitHubProjectPrompt(files, task, criteria)
-
+	// err := os.WriteFile("file.txt", []byte(prompt), 0644)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// return nil, fmt.Errorf("mock error")
 	reqBody := deepseekRequest{
 		Model: "deepseek-chat",
 		Messages: []message{

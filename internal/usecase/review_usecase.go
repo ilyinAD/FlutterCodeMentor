@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
+	"time"
 
 	"github.com/ilyin-ad/flutter-code-mentor/internal/domain"
 	"github.com/ilyin-ad/flutter-code-mentor/internal/repository"
@@ -64,7 +65,10 @@ func (uc *reviewUseCase) ProcessPendingSubmissions(ctx context.Context) error {
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			if err := uc.processSubmission(ctx, sub); err != nil {
+			subCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+			defer cancel()
+
+			if err := uc.processSubmission(subCtx, sub); err != nil {
 				uc.logger.Error("Failed to process submission",
 					zap.Int("submission_id", sub.ID),
 					zap.Error(err),
@@ -83,6 +87,27 @@ func (uc *reviewUseCase) processSubmission(ctx context.Context, submission *doma
 		zap.String("type", string(submission.SubmissionType)),
 	)
 
+	if err := uc.submissionRepo.UpdateStatus(ctx, submission.ID, domain.StatusProcessing); err != nil {
+		return fmt.Errorf("failed to set processing status: %w", err)
+	}
+
+	err := uc.doProcessSubmission(ctx, submission)
+	if err != nil {
+		uc.logger.Error("Submission processing failed, reverting to pending",
+			zap.Int("submission_id", submission.ID),
+			zap.Error(err),
+		)
+		if revertErr := uc.submissionRepo.UpdateStatus(context.Background(), submission.ID, domain.StatusPending); revertErr != nil {
+			uc.logger.Error("Failed to revert submission status",
+				zap.Int("submission_id", submission.ID),
+				zap.Error(revertErr),
+			)
+		}
+	}
+	return err
+}
+
+func (uc *reviewUseCase) doProcessSubmission(ctx context.Context, submission *domain.Submission) error {
 	existingReview, err := uc.reviewRepo.GetCodeReviewBySubmissionID(ctx, submission.ID)
 	if err != nil {
 		return fmt.Errorf("failed to check existing review: %w", err)

@@ -122,17 +122,10 @@ func (uc *taskUseCase) validateTaskRequest(req *CreateTaskRequest) error {
 		})
 	}
 
-	if len(req.Title) < 5 || len(req.Title) > 100 {
+	if len(req.Title) < 1 {
 		details = append(details, ValidationErrorDetail{
 			Field:   "title",
 			Message: "Must be between 5 and 100 characters",
-		})
-	}
-
-	if len(req.Description) < 10 {
-		details = append(details, ValidationErrorDetail{
-			Field:   "description",
-			Message: "Must be at least 10 characters",
 		})
 	}
 
@@ -140,13 +133,6 @@ func (uc *taskUseCase) validateTaskRequest(req *CreateTaskRequest) error {
 		details = append(details, ValidationErrorDetail{
 			Field:   "deadline",
 			Message: "Must be in the future",
-		})
-	}
-
-	if req.MaxScore < 1 || req.MaxScore > 100 {
-		details = append(details, ValidationErrorDetail{
-			Field:   "max_score",
-			Message: "Must be between 1 and 100",
 		})
 	}
 
@@ -158,7 +144,7 @@ func (uc *taskUseCase) validateTaskRequest(req *CreateTaskRequest) error {
 	}
 
 	for i, criteria := range req.Criteria {
-		if len(criteria.CriterionName) < 3 || len(criteria.CriterionName) > 100 {
+		if len(criteria.CriterionName) < 1 {
 			details = append(details, ValidationErrorDetail{
 				Field:   fmt.Sprintf("criteria[%d].criterion_name", i),
 				Message: "Must be between 3 and 100 characters",

@@ -49,10 +49,6 @@ type CreateCourseResponse struct {
 }
 
 func (uc *courseUseCase) CreateCourse(ctx context.Context, req *CreateCourseRequest) (*CreateCourseResponse, error) {
-	if err := uc.validateCourseRequest(req); err != nil {
-		return nil, err
-	}
-
 	teacher, err := uc.userRepo.GetByID(ctx, req.TeacherID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUserNotFound, err)
@@ -89,31 +85,4 @@ func (uc *courseUseCase) CreateCourse(ctx context.Context, req *CreateCourseRequ
 		IsActive:    req.IsActive,
 		CreatedAt:   course.CreatedAt,
 	}, nil
-}
-
-func (uc *courseUseCase) validateCourseRequest(req *CreateCourseRequest) error {
-	var details []ValidationErrorDetail
-
-	if len(req.Title) < 3 || len(req.Title) > 100 {
-		details = append(details, ValidationErrorDetail{
-			Field:   "title",
-			Message: "Must be between 3 and 100 characters",
-		})
-	}
-
-	if req.EndDate != nil && req.EndDate.Before(req.StartDate) {
-		details = append(details, ValidationErrorDetail{
-			Field:   "end_date",
-			Message: "Must be after start_date",
-		})
-	}
-
-	if len(details) > 0 {
-		return &ValidationError{
-			Message: "Validation failed",
-			Details: details,
-		}
-	}
-
-	return nil
 }

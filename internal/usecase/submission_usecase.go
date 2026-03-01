@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/ilyin-ad/flutter-code-mentor/internal/domain"
@@ -117,59 +116,6 @@ func (uc *submissionUseCase) validateSubmissionRequest(req *CreateSubmissionRequ
 		details = append(details, ValidationErrorDetail{
 			Field:   "submission_type",
 			Message: "Must be either 'code' or 'github_link'",
-		})
-	}
-
-	if req.SubmissionType == string(domain.SubmissionTypeCode) {
-		if req.Code == nil || *req.Code == "" {
-			details = append(details, ValidationErrorDetail{
-				Field:   "code",
-				Message: "Required when submission_type is 'code'",
-			})
-		}
-		if req.GithubURL != nil && *req.GithubURL != "" {
-			details = append(details, ValidationErrorDetail{
-				Field:   "github_url",
-				Message: "Should not be provided when submission_type is 'code'",
-			})
-		}
-	}
-
-	if req.SubmissionType == string(domain.SubmissionTypeGithubLink) {
-		if req.GithubURL == nil || *req.GithubURL == "" {
-			details = append(details, ValidationErrorDetail{
-				Field:   "github_url",
-				Message: "Required when submission_type is 'github_link'",
-			})
-		} else {
-			githubURLPattern := `^https://github\.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)/?$`
-			matched, _ := regexp.MatchString(githubURLPattern, *req.GithubURL)
-			if !matched {
-				details = append(details, ValidationErrorDetail{
-					Field:   "github_url",
-					Message: "Invalid GitHub URL format. Expected: https://github.com/username/repository",
-				})
-			}
-		}
-		if req.Code != nil && *req.Code != "" {
-			details = append(details, ValidationErrorDetail{
-				Field:   "code",
-				Message: "Should not be provided when submission_type is 'github_link'",
-			})
-		}
-	}
-
-	if req.TaskID < 1 {
-		details = append(details, ValidationErrorDetail{
-			Field:   "task_id",
-			Message: "Must be greater than 0",
-		})
-	}
-
-	if req.UserID < 1 {
-		details = append(details, ValidationErrorDetail{
-			Field:   "user_id",
-			Message: "Must be greater than 0",
 		})
 	}
 

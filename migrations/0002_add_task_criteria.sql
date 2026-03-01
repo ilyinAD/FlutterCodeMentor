@@ -2,6 +2,7 @@
 -- +goose StatementBegin
 begin;
 
+--- таблицы с критериями по задаче
 CREATE TABLE task_criteria (
   id SERIAL PRIMARY KEY,
   task_id INT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
