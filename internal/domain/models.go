@@ -108,3 +108,16 @@ type TaskCriteria struct {
 	Weight               int
 	CreatedAt            time.Time
 }
+
+type BuildResult struct {
+	ID              int
+	SubmissionID    int
+	CompileSuccess  bool
+	AnalyzeOutput   string
+	TestOutput      string
+	TestsPassed     bool
+	FormatOutput    string
+	FormatCorrect   bool
+	ExecutionTimeMs int
+	CreatedAt       time.Time
+}

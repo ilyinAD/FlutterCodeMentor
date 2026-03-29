@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ilyin-ad/flutter-code-mentor/internal/config"
 	"github.com/ilyin-ad/flutter-code-mentor/internal/domain"
 	"github.com/ilyin-ad/flutter-code-mentor/internal/repository"
 	"github.com/ilyin-ad/flutter-code-mentor/internal/service"
@@ -23,26 +24,35 @@ type ReviewUseCase interface {
 type reviewUseCase struct {
 	submissionRepo repository.SubmissionRepository
 	reviewRepo     repository.ReviewRepository
+	buildRepo      repository.BuildRepository
 	taskRepo       repository.TaskRepository
 	aiService      service.AIService
 	githubService  service.GitHubService
+	buildService   service.BuildService
+	buildEnabled   bool
 	logger         *zap.Logger
 }
 
 func NewReviewUseCase(
 	submissionRepo repository.SubmissionRepository,
 	reviewRepo repository.ReviewRepository,
+	buildRepo repository.BuildRepository,
 	taskRepo repository.TaskRepository,
 	aiService service.AIService,
 	githubService service.GitHubService,
+	buildService service.BuildService,
+	cfg *config.Config,
 	logger *zap.Logger,
 ) ReviewUseCase {
 	return &reviewUseCase{
 		submissionRepo: submissionRepo,
 		reviewRepo:     reviewRepo,
+		buildRepo:      buildRepo,
 		taskRepo:       taskRepo,
 		aiService:      aiService,
 		githubService:  githubService,
+		buildService:   buildService,
+		buildEnabled:   cfg.Build.Enabled,
 		logger:         logger,
 	}
 }
@@ -155,7 +165,22 @@ func (uc *reviewUseCase) processCodeSubmission(ctx context.Context, submission *
 	}
 
 	uc.logger.Info("Reviewing code submission", zap.Int("submission_id", submission.ID))
-	return uc.aiService.ReviewCode(ctx, submission.Code, task, criteria)
+
+	var buildOutput *service.BuildOutput
+	if uc.buildEnabled {
+		bo, err := uc.buildService.BuildCodeSnippet(ctx, *submission.Code)
+		if err != nil {
+			uc.logger.Warn("Build step failed, continuing without build results",
+				zap.Int("submission_id", submission.ID),
+				zap.Error(err),
+			)
+		} else {
+			buildOutput = bo
+			uc.saveBuildResult(ctx, submission.ID, buildOutput)
+		}
+	}
+
+	return uc.aiService.ReviewCode(ctx, submission.Code, task, criteria, buildOutput)
 }
 
 func (uc *reviewUseCase) processGitHubSubmission(ctx context.Context, submission *domain.Submission, task *domain.Task, criteria []*domain.TaskCriteria) (*service.CodeReviewResult, error) {
@@ -176,7 +201,21 @@ func (uc *reviewUseCase) processGitHubSubmission(ctx context.Context, submission
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
-	defer uc.githubService.Cleanup(repoPath)
+	//defer uc.githubService.Cleanup(repoPath)
+
+	var buildOutput *service.BuildOutput
+	if uc.buildEnabled {
+		bo, err := uc.buildService.BuildAndTest(ctx, repoPath)
+		if err != nil {
+			uc.logger.Warn("Build step failed, continuing without build results",
+				zap.Int("submission_id", submission.ID),
+				zap.Error(err),
+			)
+		} else {
+			buildOutput = bo
+			uc.saveBuildResult(ctx, submission.ID, buildOutput)
+		}
+	}
 
 	dartFiles, err := uc.githubService.GetDartFiles(repoPath)
 	if err != nil {
@@ -210,13 +249,40 @@ func (uc *reviewUseCase) processGitHubSubmission(ctx context.Context, submission
 		return nil, fmt.Errorf("failed to read any Dart files from repository")
 	}
 
-	return uc.aiService.ReviewGitHubProject(ctx, files, task, criteria)
+	return uc.aiService.ReviewGitHubProject(ctx, files, task, criteria, buildOutput)
+}
+
+func (uc *reviewUseCase) saveBuildResult(ctx context.Context, submissionID int, bo *service.BuildOutput) {
+	buildResult := &domain.BuildResult{
+		SubmissionID:    submissionID,
+		CompileSuccess:  bo.CompileSuccess,
+		AnalyzeOutput:   bo.AnalyzeOutput,
+		TestOutput:      bo.TestOutput,
+		TestsPassed:     bo.TestsPassed,
+		ExecutionTimeMs: bo.ExecutionTimeMs,
+	}
+
+	id, err := uc.buildRepo.CreateBuildResult(ctx, buildResult)
+	if err != nil {
+		uc.logger.Error("Failed to save build result",
+			zap.Int("submission_id", submissionID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	uc.logger.Info("Saved build result",
+		zap.Int("submission_id", submissionID),
+		zap.Int("build_result_id", id),
+		zap.Bool("compile_success", bo.CompileSuccess),
+		zap.Bool("tests_passed", bo.TestsPassed),
+	)
 }
 
 func (uc *reviewUseCase) saveReviewResult(ctx context.Context, submissionID int, result *service.CodeReviewResult) error {
 	review := &domain.CodeReview{
 		SubmissionID:    submissionID,
-		AIModel:         "deepseek",
+		AIModel:         uc.aiService.ModelName(),
 		OverallStatus:   result.OverallStatus,
 		AIConfidence:    &result.AIConfidence,
 		ExecutionTimeMs: &result.ExecutionTimeMs,

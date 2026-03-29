@@ -9,10 +9,25 @@ import (
 )
 
 type Config struct {
-	Database       DatabaseConfig
-	Server         ServerConfig
-	DeepSeekAPIKey string `env:"DEEPSEEK_API_KEY,required"`
-	DeepSeekAPIURL string `env:"DEEPSEEK_API_URL" envDefault:"https://api.deepseek.com/chat/completions"`
+	Database DatabaseConfig
+	Server   ServerConfig
+	AI       AIConfig
+	Build    BuildConfig
+}
+
+type BuildConfig struct {
+	DockerImage string `env:"BUILD_DOCKER_IMAGE" envDefault:"ghcr.io/cirruslabs/flutter:stable"`
+	TimeoutSec  int    `env:"BUILD_TIMEOUT_SEC" envDefault:"120"`
+	Enabled     bool   `env:"BUILD_ENABLED" envDefault:"false"`
+}
+
+type AIConfig struct {
+	Provider    string `env:"AI_PROVIDER" envDefault:"deepseek"`
+	APIKey      string `env:"AI_API_KEY"`
+	BaseURL     string `env:"AI_BASE_URL" envDefault:"https://api.deepseek.com"`
+	Model       string `env:"AI_MODEL" envDefault:"deepseek-chat"`
+	LogPrompts  bool   `env:"AI_LOG_PROMPTS" envDefault:"false"`
+	PromptLogFile string `env:"AI_PROMPT_LOG_FILE" envDefault:"prompts.log"`
 }
 
 type DatabaseConfig struct {

@@ -24,7 +24,11 @@ type githubService struct {
 }
 
 func NewGitHubService(logger *zap.Logger) GitHubService {
-	tempDir := filepath.Join(os.TempDir(), "flutter-code-mentor")
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	tempDir := filepath.Join(cwd, "repos")
 	os.MkdirAll(tempDir, 0755)
 
 	return &githubService{

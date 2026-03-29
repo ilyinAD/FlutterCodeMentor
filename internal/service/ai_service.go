@@ -1,12 +1,9 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -15,24 +12,19 @@ import (
 )
 
 type AIService interface {
-	ReviewCode(ctx context.Context, code *string, task *domain.Task, criteria []*domain.TaskCriteria) (*CodeReviewResult, error)
-	ReviewGitHubProject(ctx context.Context, files map[string]string, task *domain.Task, criteria []*domain.TaskCriteria) (*CodeReviewResult, error)
+	ReviewCode(ctx context.Context, code *string, task *domain.Task, criteria []*domain.TaskCriteria, buildOutput *BuildOutput) (*CodeReviewResult, error)
+	ReviewGitHubProject(ctx context.Context, files map[string]string, task *domain.Task, criteria []*domain.TaskCriteria, buildOutput *BuildOutput) (*CodeReviewResult, error)
+	ModelName() string
 }
 
 type aiService struct {
-	apiKey string
-	apiURL string
-	client *http.Client
+	client LLMClient
 	logger *zap.Logger
 }
 
-func NewAIService(apiKey, apiURL string, logger *zap.Logger) AIService {
+func NewAIService(client LLMClient, logger *zap.Logger) AIService {
 	return &aiService{
-		apiKey: apiKey,
-		apiURL: apiURL,
-		client: &http.Client{
-			Timeout: 5 * time.Minute,
-		},
+		client: client,
 		logger: logger,
 	}
 }
@@ -55,25 +47,6 @@ type FeedbackItem struct {
 	Severity     int
 }
 
-type deepseekRequest struct {
-	Model    string    `json:"model"`
-	Messages []message `json:"messages"`
-	Stream   bool      `json:"stream"`
-}
-
-type message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type deepseekResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-}
-
 type aiReviewResponse struct {
 	OverallStatus string         `json:"overall_status"`
 	Confidence    float64        `json:"confidence"`
@@ -91,7 +64,11 @@ type feedbackJSON struct {
 	Severity     int    `json:"severity"`
 }
 
-func (s *aiService) ReviewCode(ctx context.Context, code *string, task *domain.Task, criteria []*domain.TaskCriteria) (*CodeReviewResult, error) {
+func (s *aiService) ModelName() string {
+	return s.client.ModelName()
+}
+
+func (s *aiService) ReviewCode(ctx context.Context, code *string, task *domain.Task, criteria []*domain.TaskCriteria, buildOutput *BuildOutput) (*CodeReviewResult, error) {
 	startTime := time.Now()
 
 	s.logger.Info("Starting AI code review",
@@ -99,73 +76,37 @@ func (s *aiService) ReviewCode(ctx context.Context, code *string, task *domain.T
 		zap.Int("criteria_count", len(criteria)),
 	)
 
-	prompt := s.buildPrompt(code, task, criteria)
+	prompt := s.buildPrompt(code, task, criteria, buildOutput)
+	systemPrompt := "You are an expert Flutter/Dart code reviewer. Analyze code and provide structured feedback in JSON format."
 
-	reqBody := deepseekRequest{
-		Model: "deepseek-chat",
-		Messages: []message{
-			{
-				Role:    "system",
-				Content: "You are an expert Flutter/Dart code reviewer. Analyze code and provide structured feedback in JSON format.",
-			},
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		Stream: false,
-	}
-
-	jsonData, err := json.Marshal(reqBody)
+	content, err := s.client.Chat(ctx, systemPrompt, prompt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("AI review failed: %w", err)
 	}
 
-	s.logger.Info("Sending request to AI API",
-		zap.String("url", s.apiURL),
-		zap.String("model", "deepseek-chat"),
+	return s.parseReviewResponse(content, startTime)
+}
+
+func (s *aiService) ReviewGitHubProject(ctx context.Context, files map[string]string, task *domain.Task, criteria []*domain.TaskCriteria, buildOutput *BuildOutput) (*CodeReviewResult, error) {
+	startTime := time.Now()
+
+	s.logger.Info("Starting AI GitHub project review",
+		zap.Int("files_count", len(files)),
+		zap.Int("criteria_count", len(criteria)),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", s.apiURL, bytes.NewBuffer(jsonData))
+	prompt := s.buildGitHubProjectPrompt(files, task, criteria, buildOutput)
+	systemPrompt := "You are an expert Flutter/Dart code reviewer. Analyze Flutter/Dart projects and provide structured feedback in JSON format."
+
+	content, err := s.client.Chat(ctx, systemPrompt, prompt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("AI review failed: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	return s.parseReviewResponse(content, startTime)
+}
 
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	s.logger.Info("Received response from AI API",
-		zap.Int("status_code", resp.StatusCode),
-	)
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var deepseekResp deepseekResponse
-	if err := json.NewDecoder(resp.Body).Decode(&deepseekResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if len(deepseekResp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from AI")
-	}
-
-	content := deepseekResp.Choices[0].Message.Content
-
-	content = strings.TrimSpace(content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
+func (s *aiService) parseReviewResponse(content string, startTime time.Time) (*CodeReviewResult, error) {
 	var aiReview aiReviewResponse
 	if err := json.Unmarshal([]byte(content), &aiReview); err != nil {
 		return nil, fmt.Errorf("failed to parse AI response: %w", err)
@@ -193,7 +134,7 @@ func (s *aiService) ReviewCode(ctx context.Context, code *string, task *domain.T
 		})
 	}
 
-	s.logger.Info("AI code review completed successfully",
+	s.logger.Info("AI review completed successfully",
 		zap.String("overall_status", result.OverallStatus),
 		zap.Float64("confidence", result.AIConfidence),
 		zap.Int("execution_time_ms", executionTime),
@@ -203,19 +144,63 @@ func (s *aiService) ReviewCode(ctx context.Context, code *string, task *domain.T
 	return result, nil
 }
 
-func (s *aiService) buildPrompt(code *string, task *domain.Task, criteria []*domain.TaskCriteria) string {
-	criteriaSection := ""
-	if len(criteria) > 0 {
-		criteriaSection = "\n\nTask-specific criteria to check:\n"
-		for i, c := range criteria {
-			mandatory := "Optional"
-			if c.IsMandatory {
-				mandatory = "Mandatory"
-			}
-			criteriaSection += fmt.Sprintf("%d. [%s, Weight: %d] %s: %s\n",
-				i+1, mandatory, c.Weight, c.CriterionName, c.CriterionDescription)
-		}
+func (s *aiService) buildBuildResultsSection(buildOutput *BuildOutput) string {
+	if buildOutput == nil {
+		return ""
 	}
+
+	compileStatus := "FAILED"
+	if buildOutput.CompileSuccess {
+		compileStatus = "PASSED"
+	}
+	testStatus := "FAILED"
+	if buildOutput.TestsPassed {
+		testStatus = "PASSED"
+	}
+
+	return fmt.Sprintf(`
+
+== Automated Build & Test Results (ground truth) ==
+Static Analysis / Compilation (dart analyze): %s
+Analysis output:
+%s
+
+Tests: %s
+Test output:
+%s
+
+IMPORTANT: These are REAL build/test results from running the code. Use them as ground truth.
+- If static analysis reports errors, the code does NOT compile — overall_status MUST be "failed".
+- Tests: if tests exist and fail — report errors. If tests are absent and the task/criteria require them — report as missing. If tests are absent and NOT required by task/criteria — ignore.
+- Tests are only checked when analysis passes.
+`, compileStatus, buildOutput.AnalyzeOutput, testStatus, buildOutput.TestOutput)
+}
+
+func (s *aiService) buildCriteriaSection(criteria []*domain.TaskCriteria) string {
+	if len(criteria) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n\nTask-specific criteria to evaluate (you MUST report PASS/FAIL for EACH):\n")
+	for i, c := range criteria {
+		mandatory := "Optional"
+		if c.IsMandatory {
+			mandatory = "Mandatory"
+		}
+		sb.WriteString(fmt.Sprintf("%d. [%s, Weight: %d] %s: %s\n",
+			i+1, mandatory, c.Weight, c.CriterionName, c.CriterionDescription))
+	}
+	sb.WriteString(`
+For EACH criterion above, you MUST include a feedback item with type "criterion_check".
+In the "description" field, start with "PASS: " or "FAIL: " followed by evidence.
+Use severity 5 for failed mandatory criteria, severity 2 for failed optional criteria, severity 1 for passed criteria.`)
+	return sb.String()
+}
+
+func (s *aiService) buildPrompt(code *string, task *domain.Task, criteria []*domain.TaskCriteria, buildOutput *BuildOutput) string {
+	criteriaSection := s.buildCriteriaSection(criteria)
+	buildSection := s.buildBuildResultsSection(buildOutput)
 
 	taskDescription := ""
 	if task != nil {
@@ -223,7 +208,7 @@ func (s *aiService) buildPrompt(code *string, task *domain.Task, criteria []*dom
 	}
 
 	return fmt.Sprintf(`Analyze the following Flutter/Dart code and provide a detailed code review.
-%s%s
+%s%s%s
 Code to review:
 %s
 
@@ -233,7 +218,7 @@ Provide your response in the following JSON format:
   "confidence": 0.95,
   "feedbacks": [
     {
-      "type": "critical_error|logic_error|style_issue|performance|security_risk|improvement",
+      "type": "critical_error|logic_error|style_issue|performance|security_risk|improvement|criterion_check",
       "line_start": 10,
       "line_end": 15,
       "code_snippet": "problematic code here",
@@ -266,147 +251,21 @@ Overall status:
 
 Provide confidence as a decimal between 0 and 1.
 
-IMPORTANT: Pay special attention to the task-specific criteria listed above. Check if the code meets these requirements and include them in your feedback if they are not satisfied.`, taskDescription, criteriaSection, *code)
+IMPORTANT: Pay special attention to the task-specific criteria listed above. For each criterion, include a feedback item with type "criterion_check".`, taskDescription, criteriaSection, buildSection, *code)
 }
 
-func (s *aiService) ReviewGitHubProject(ctx context.Context, files map[string]string, task *domain.Task, criteria []*domain.TaskCriteria) (*CodeReviewResult, error) {
-	startTime := time.Now()
-
-	s.logger.Info("Starting AI GitHub project review",
-		zap.Int("files_count", len(files)),
-		zap.Int("criteria_count", len(criteria)),
-	)
-
-	prompt := s.buildGitHubProjectPrompt(files, task, criteria)
-	// err := os.WriteFile("file.txt", []byte(prompt), 0644)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// return nil, fmt.Errorf("mock error")
-	reqBody := deepseekRequest{
-		Model: "deepseek-chat",
-		Messages: []message{
-			{
-				Role:    "system",
-				Content: "You are an expert Flutter/Dart code reviewer. Analyze Flutter/Dart projects and provide structured feedback in JSON format.",
-			},
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		Stream: false,
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	s.logger.Info("Sending request to AI API for GitHub project review",
-		zap.String("url", s.apiURL),
-		zap.String("model", "deepseek-chat"),
-	)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", s.apiURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	s.logger.Info("Received response from AI API",
-		zap.Int("status_code", resp.StatusCode),
-	)
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var deepseekResp deepseekResponse
-	if err := json.NewDecoder(resp.Body).Decode(&deepseekResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if len(deepseekResp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from AI")
-	}
-
-	content := deepseekResp.Choices[0].Message.Content
-
-	content = strings.TrimSpace(content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
-	var aiReview aiReviewResponse
-	if err := json.Unmarshal([]byte(content), &aiReview); err != nil {
-		return nil, fmt.Errorf("failed to parse AI response: %w", err)
-	}
-
-	executionTime := int(time.Since(startTime).Milliseconds())
-
-	result := &CodeReviewResult{
-		OverallStatus:   aiReview.OverallStatus,
-		AIConfidence:    aiReview.Confidence,
-		ExecutionTimeMs: executionTime,
-		Feedbacks:       make([]FeedbackItem, 0, len(aiReview.Feedbacks)),
-	}
-
-	for _, fb := range aiReview.Feedbacks {
-		result.Feedbacks = append(result.Feedbacks, FeedbackItem{
-			FeedbackType: fb.Type,
-			FilePath:     fb.FilePath,
-			LineStart:    fb.LineStart,
-			LineEnd:      fb.LineEnd,
-			CodeSnippet:  fb.CodeSnippet,
-			SuggestedFix: fb.SuggestedFix,
-			Description:  fb.Description,
-			Severity:     fb.Severity,
-		})
-	}
-
-	s.logger.Info("AI GitHub project review completed successfully",
-		zap.String("overall_status", result.OverallStatus),
-		zap.Float64("confidence", result.AIConfidence),
-		zap.Int("execution_time_ms", executionTime),
-		zap.Int("feedbacks_count", len(result.Feedbacks)),
-	)
-
-	return result, nil
-}
-
-func (s *aiService) buildGitHubProjectPrompt(files map[string]string, task *domain.Task, criteria []*domain.TaskCriteria) string {
+func (s *aiService) buildGitHubProjectPrompt(files map[string]string, task *domain.Task, criteria []*domain.TaskCriteria, buildOutput *BuildOutput) string {
 	var filesContent strings.Builder
 	filesContent.WriteString("Flutter/Dart project files:\n\n")
 
 	for filePath, content := range files {
-		filesContent.WriteString(fmt.Sprintf("=== File: %s ===\n", filePath))
+		fmt.Fprintf(&filesContent, "=== File: %s ===\n", filePath)
 		filesContent.WriteString(content)
 		filesContent.WriteString("\n\n")
 	}
 
-	criteriaSection := ""
-	if len(criteria) > 0 {
-		criteriaSection = "\n\nTask-specific criteria to check:\n"
-		for i, c := range criteria {
-			mandatory := "Optional"
-			if c.IsMandatory {
-				mandatory = "Mandatory"
-			}
-			criteriaSection += fmt.Sprintf("%d. [%s, Weight: %d] %s: %s\n",
-				i+1, mandatory, c.Weight, c.CriterionName, c.CriterionDescription)
-		}
-	}
+	criteriaSection := s.buildCriteriaSection(criteria)
+	buildSection := s.buildBuildResultsSection(buildOutput)
 
 	taskDescription := ""
 	if task != nil {
@@ -414,7 +273,7 @@ func (s *aiService) buildGitHubProjectPrompt(files map[string]string, task *doma
 	}
 
 	return fmt.Sprintf(`Analyze the following Flutter/Dart project and provide a detailed code review.
-%s%s
+%s%s%s
 %s
 
 Provide your response in the following JSON format:
@@ -423,7 +282,7 @@ Provide your response in the following JSON format:
   "confidence": 0.95,
   "feedbacks": [
     {
-      "type": "critical_error|logic_error|style_issue|performance|security_risk|improvement",
+      "type": "critical_error|logic_error|style_issue|performance|security_risk|improvement|criterion_check",
       "file_path": "lib/main.dart",
       "line_start": 10,
       "line_end": 15,
@@ -458,5 +317,5 @@ Overall status:
 
 Provide confidence as a decimal between 0 and 1.
 IMPORTANT: Always include "file_path" field in each feedback item to indicate which file the issue is in.
-IMPORTANT: Pay special attention to the task-specific criteria listed above. Check if the project meets these requirements and include them in your feedback if they are not satisfied.`, taskDescription, criteriaSection, filesContent.String())
+IMPORTANT: Pay special attention to the task-specific criteria listed above. For each criterion, include a feedback item with type "criterion_check".`, taskDescription, criteriaSection, buildSection, filesContent.String())
 }
