@@ -19,7 +19,9 @@ type BuildService interface {
 }
 
 type BuildOutput struct {
-	CompileSuccess  bool
+	BuildSuccess    bool
+	BuildOutput     string
+	AnalyzeClean    bool
 	AnalyzeOutput   string
 	TestOutput      string
 	TestsPassed     bool
@@ -59,7 +61,7 @@ func (s *buildService) BuildAndTest(ctx context.Context, projectPath string) (*B
 	defer cancel()
 
 	cmd := exec.CommandContext(buildCtx, "docker", "run", "--rm",
-		"--memory=1024m", "--cpus=1", "--pids-limit=256",
+		"--memory=4096m", "--cpus=2", "--pids-limit=512",
 		"-v", projectPath+":/source:ro",
 		s.dockerImage,
 		"sh", "-c", "cp -r /source /app && cd /app && "+script,
@@ -72,7 +74,7 @@ func (s *buildService) BuildAndTest(ctx context.Context, projectPath string) (*B
 
 	if buildCtx.Err() == context.DeadlineExceeded {
 		return &BuildOutput{
-			CompileSuccess:  false,
+			BuildSuccess:    false,
 			AnalyzeOutput:   "Build timed out",
 			ExecutionTimeMs: executionTime,
 		}, nil
@@ -86,7 +88,7 @@ func (s *buildService) BuildAndTest(ctx context.Context, projectPath string) (*B
 	result.ExecutionTimeMs = executionTime
 
 	s.logger.Info("Docker build/test completed",
-		zap.Bool("compile_success", result.CompileSuccess),
+		zap.Bool("build_success", result.BuildSuccess),
 		zap.Bool("tests_passed", result.TestsPassed),
 		zap.Int("execution_time_ms", executionTime),
 	)
@@ -134,43 +136,61 @@ func (s *buildService) isFlutterProject(projectPath string) bool {
 func (s *buildService) buildScript(isFlutter bool) string {
 	pubCmd := "dart"
 	analyzeCmd := "dart analyze"
+	buildCmd := "dart compile kernel lib/main.dart -o /tmp/app.dill"
 	testCmd := "dart test"
 	if isFlutter {
 		pubCmd = "flutter"
 		analyzeCmd = "flutter analyze"
+		buildCmd = "flutter build bundle"
 		testCmd = "flutter test"
 	}
 
 	return fmt.Sprintf(`
 echo "===PUB_GET_START===";
+if [ ! -d "android" ] && [ "%s" = "flutter" ]; then
+  flutter create --no-overwrite . 2>&1;
+fi
 %s pub get 2>&1;
 PUB_EXIT=$?;
 echo "===PUB_GET_EXIT=$PUB_EXIT===";
 
-echo "===ANALYZE_START===";
+echo "===BUILD_START===";
 %s 2>&1;
-ANALYZE_EXIT=$?;
+BUILD_EXIT=$?;
+echo "===BUILD_EXIT=$BUILD_EXIT===";
+
+echo "===ANALYZE_START===";
+if [ $BUILD_EXIT -eq 0 ]; then
+  %s 2>&1;
+  ANALYZE_EXIT=$?;
+else
+  echo "Skipped: build failed";
+  ANALYZE_EXIT=-1;
+fi
 echo "===ANALYZE_EXIT=$ANALYZE_EXIT===";
 
-if [ $ANALYZE_EXIT -eq 0 ]; then
-  echo "===TEST_START===";
+echo "===TEST_START===";
+if [ $BUILD_EXIT -eq 0 ]; then
   %s 2>&1;
   TEST_EXIT=$?;
-  echo "===TEST_EXIT=$TEST_EXIT===";
 else
-  echo "===TEST_START===";
-  echo "Skipped: analyze failed";
-  echo "===TEST_EXIT=-1===";
+  echo "Skipped: build failed";
+  TEST_EXIT=-1;
 fi
-`, pubCmd, analyzeCmd, testCmd)
+echo "===TEST_EXIT=$TEST_EXIT===";
+`, pubCmd, pubCmd, buildCmd, analyzeCmd, testCmd)
 }
 
 func (s *buildService) parseOutput(output string) *BuildOutput {
 	result := &BuildOutput{}
 
+	buildOutput, buildExit := extractSection(output, "BUILD")
+	result.BuildOutput = truncateOutput(buildOutput, 4000)
+	result.BuildSuccess = buildExit == 0
+
 	analyzeOutput, analyzeExit := extractSection(output, "ANALYZE")
 	result.AnalyzeOutput = truncateOutput(filterAnalyzeOutput(analyzeOutput), 4000)
-	result.CompileSuccess = analyzeExit == 0
+	result.AnalyzeClean = analyzeExit == 0
 
 	testOutput, testExit := extractSection(output, "TEST")
 	result.TestOutput = truncateOutput(testOutput, 4000)

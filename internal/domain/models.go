@@ -114,6 +114,8 @@ type BuildResult struct {
 	SubmissionID    int
 	CompileSuccess  bool
 	AnalyzeOutput   string
+	BuildSuccess    bool
+	BuildOutput     string
 	TestOutput      string
 	TestsPassed     bool
 	FormatOutput    string

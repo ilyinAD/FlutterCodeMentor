@@ -149,9 +149,13 @@ func (s *aiService) buildBuildResultsSection(buildOutput *BuildOutput) string {
 		return ""
 	}
 
-	compileStatus := "FAILED"
-	if buildOutput.CompileSuccess {
-		compileStatus = "PASSED"
+	buildStatus := "FAILED"
+	if buildOutput.BuildSuccess {
+		buildStatus = "PASSED"
+	}
+	analyzeStatus := "CLEAN"
+	if !buildOutput.AnalyzeClean {
+		analyzeStatus = "HAS ISSUES"
 	}
 	testStatus := "FAILED"
 	if buildOutput.TestsPassed {
@@ -161,7 +165,11 @@ func (s *aiService) buildBuildResultsSection(buildOutput *BuildOutput) string {
 	return fmt.Sprintf(`
 
 == Automated Build & Test Results (ground truth) ==
-Static Analysis / Compilation (dart analyze): %s
+Build (compilation): %s
+Build output:
+%s
+
+Static Analysis (dart analyze): %s
 Analysis output:
 %s
 
@@ -170,10 +178,10 @@ Test output:
 %s
 
 IMPORTANT: These are REAL build/test results from running the code. Use them as ground truth.
-- If static analysis reports errors, the code does NOT compile — overall_status MUST be "failed".
+- If build fails, the project does NOT compile — overall_status MUST be "failed".
+- Static analysis issues (info/warning level) do NOT mean the code fails to compile. Use them to provide style and quality feedback.
 - Tests: if tests exist and fail — report errors. If tests are absent and the task/criteria require them — report as missing. If tests are absent and NOT required by task/criteria — ignore.
-- Tests are only checked when analysis passes.
-`, compileStatus, buildOutput.AnalyzeOutput, testStatus, buildOutput.TestOutput)
+`, buildStatus, buildOutput.BuildOutput, analyzeStatus, buildOutput.AnalyzeOutput, testStatus, buildOutput.TestOutput)
 }
 
 func (s *aiService) buildCriteriaSection(criteria []*domain.TaskCriteria) string {
@@ -182,7 +190,7 @@ func (s *aiService) buildCriteriaSection(criteria []*domain.TaskCriteria) string
 	}
 
 	var sb strings.Builder
-	sb.WriteString("\n\nTask-specific criteria to evaluate (you MUST report PASS/FAIL for EACH):\n")
+	sb.WriteString("\n\nTask-specific criteria to evaluate:\n")
 	for i, c := range criteria {
 		mandatory := "Optional"
 		if c.IsMandatory {
@@ -192,9 +200,10 @@ func (s *aiService) buildCriteriaSection(criteria []*domain.TaskCriteria) string
 			i+1, mandatory, c.Weight, c.CriterionName, c.CriterionDescription))
 	}
 	sb.WriteString(`
-For EACH criterion above, you MUST include a feedback item with type "criterion_check".
-In the "description" field, start with "PASS: " or "FAIL: " followed by evidence.
-Use severity 5 for failed mandatory criteria, severity 2 for failed optional criteria, severity 1 for passed criteria.`)
+Only include a feedback item with type "criterion_check" for criteria that are NOT met.
+Do NOT include feedback for criteria that are satisfied.
+In the "description" field, start with "FAIL: " followed by evidence of what is missing or wrong.
+Use severity 5 for failed mandatory criteria, severity 2 for failed optional criteria.`)
 	return sb.String()
 }
 
@@ -212,10 +221,10 @@ func (s *aiService) buildPrompt(code *string, task *domain.Task, criteria []*dom
 Code to review:
 %s
 
-Provide your response in the following JSON format:
+Respond ONLY with JSON in this exact format:
 {
   "overall_status": "passed|failed|needs_improvement",
-  "confidence": 0.95,
+  "confidence": 0.0-1.0,
   "feedbacks": [
     {
       "type": "critical_error|logic_error|style_issue|performance|security_risk|improvement|criterion_check",
@@ -223,35 +232,16 @@ Provide your response in the following JSON format:
       "line_end": 15,
       "code_snippet": "problematic code here",
       "suggested_fix": "corrected code here",
-      "description": "detailed explanation of the issue",
+      "description": "detailed explanation",
       "severity": 1-5
     }
   ]
 }
 
-Review criteria:
-1. **Critical Errors**: Syntax errors, null safety violations, type mismatches
-2. **Logic Errors**: Incorrect business logic, potential runtime errors
-3. **Style Issues**: Code formatting, naming conventions, Flutter best practices
-4. **Performance**: Inefficient algorithms, unnecessary rebuilds, memory leaks
-5. **Security**: Exposed sensitive data, insecure API calls
-6. **Improvements**: Better patterns, code organization, widget composition
-
-Severity levels:
-- 5: Critical (blocks functionality)
-- 4: Major (significant impact)
-- 3: Moderate (noticeable issue)
-- 2: Minor (cosmetic or style)
-- 1: Suggestion (optional improvement)
-
-Overall status:
-- "passed": Code is production-ready with minor or no issues
-- "needs_improvement": Code works but has moderate issues
-- "failed": Code has critical errors or major problems
-
-Provide confidence as a decimal between 0 and 1.
-
-IMPORTANT: Pay special attention to the task-specific criteria listed above. For each criterion, include a feedback item with type "criterion_check".`, taskDescription, criteriaSection, buildSection, *code)
+Rules:
+- overall_status: "failed" if build fails or critical errors exist, "needs_improvement" if moderate issues, "passed" if production-ready.
+- severity: 5=critical (blocks functionality), 4=major, 3=moderate, 2=minor/style, 1=suggestion.
+- For task criteria: only include a "criterion_check" feedback for criteria that are NOT met. Do not report passed criteria.`, taskDescription, criteriaSection, buildSection, *code)
 }
 
 func (s *aiService) buildGitHubProjectPrompt(files map[string]string, task *domain.Task, criteria []*domain.TaskCriteria, buildOutput *BuildOutput) string {
@@ -276,10 +266,10 @@ func (s *aiService) buildGitHubProjectPrompt(files map[string]string, task *doma
 %s%s%s
 %s
 
-Provide your response in the following JSON format:
+Respond ONLY with JSON in this exact format:
 {
   "overall_status": "passed|failed|needs_improvement",
-  "confidence": 0.95,
+  "confidence": 0.0-1.0,
   "feedbacks": [
     {
       "type": "critical_error|logic_error|style_issue|performance|security_risk|improvement|criterion_check",
@@ -288,34 +278,15 @@ Provide your response in the following JSON format:
       "line_end": 15,
       "code_snippet": "problematic code here",
       "suggested_fix": "corrected code here",
-      "description": "detailed explanation of the issue",
+      "description": "detailed explanation",
       "severity": 1-5
     }
   ]
 }
 
-Review criteria:
-1. **Critical Errors**: Syntax errors, null safety violations, type mismatches
-2. **Logic Errors**: Incorrect business logic, potential runtime errors
-3. **Style Issues**: Code formatting, naming conventions, Flutter best practices
-4. **Performance**: Inefficient algorithms, unnecessary rebuilds, memory leaks
-5. **Security**: Exposed sensitive data, insecure API calls
-6. **Improvements**: Better patterns, code organization, widget composition
-7. **Project Structure**: Proper file organization, separation of concerns
-
-Severity levels:
-- 5: Critical (blocks functionality)
-- 4: Major (significant impact)
-- 3: Moderate (noticeable issue)
-- 2: Minor (cosmetic or style)
-- 1: Suggestion (optional improvement)
-
-Overall status:
-- "passed": Code is production-ready with minor or no issues
-- "needs_improvement": Code works but has moderate issues
-- "failed": Code has critical errors or major problems
-
-Provide confidence as a decimal between 0 and 1.
-IMPORTANT: Always include "file_path" field in each feedback item to indicate which file the issue is in.
-IMPORTANT: Pay special attention to the task-specific criteria listed above. For each criterion, include a feedback item with type "criterion_check".`, taskDescription, criteriaSection, buildSection, filesContent.String())
+Rules:
+- overall_status: "failed" if build fails or critical errors exist, "needs_improvement" if moderate issues, "passed" if production-ready.
+- severity: 5=critical (blocks functionality), 4=major, 3=moderate, 2=minor/style, 1=suggestion.
+- Always include "file_path" in each feedback item.
+- For task criteria: only include a "criterion_check" feedback for criteria that are NOT met. Do not report passed criteria.`, taskDescription, criteriaSection, buildSection, filesContent.String())
 }

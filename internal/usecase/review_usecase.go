@@ -75,7 +75,7 @@ func (uc *reviewUseCase) ProcessPendingSubmissions(ctx context.Context) error {
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			subCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+			subCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancel()
 
 			if err := uc.processSubmission(subCtx, sub); err != nil {
@@ -107,7 +107,9 @@ func (uc *reviewUseCase) processSubmission(ctx context.Context, submission *doma
 			zap.Int("submission_id", submission.ID),
 			zap.Error(err),
 		)
-		if revertErr := uc.submissionRepo.UpdateStatus(context.Background(), submission.ID, domain.StatusPending); revertErr != nil {
+		revertCtx, revertCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer revertCancel()
+		if revertErr := uc.submissionRepo.UpdateStatus(revertCtx, submission.ID, domain.StatusPending); revertErr != nil {
 			uc.logger.Error("Failed to revert submission status",
 				zap.Int("submission_id", submission.ID),
 				zap.Error(revertErr),
@@ -255,8 +257,10 @@ func (uc *reviewUseCase) processGitHubSubmission(ctx context.Context, submission
 func (uc *reviewUseCase) saveBuildResult(ctx context.Context, submissionID int, bo *service.BuildOutput) {
 	buildResult := &domain.BuildResult{
 		SubmissionID:    submissionID,
-		CompileSuccess:  bo.CompileSuccess,
+		CompileSuccess:  bo.BuildSuccess,
 		AnalyzeOutput:   bo.AnalyzeOutput,
+		BuildSuccess:    bo.BuildSuccess,
+		BuildOutput:     bo.BuildOutput,
 		TestOutput:      bo.TestOutput,
 		TestsPassed:     bo.TestsPassed,
 		ExecutionTimeMs: bo.ExecutionTimeMs,
@@ -274,7 +278,7 @@ func (uc *reviewUseCase) saveBuildResult(ctx context.Context, submissionID int, 
 	uc.logger.Info("Saved build result",
 		zap.Int("submission_id", submissionID),
 		zap.Int("build_result_id", id),
-		zap.Bool("compile_success", bo.CompileSuccess),
+		zap.Bool("build_success", bo.BuildSuccess),
 		zap.Bool("tests_passed", bo.TestsPassed),
 	)
 }

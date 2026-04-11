@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -48,7 +49,10 @@ func (s *githubService) CloneRepository(ctx context.Context, githubURL string) (
 		os.RemoveAll(repoPath)
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", githubURL, repoPath)
+	cloneCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(cloneCtx, "git", "clone", "--depth", "1", githubURL, repoPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		s.logger.Error("Failed to clone repository",

@@ -27,10 +27,11 @@ func (r *buildRepository) CreateBuildResult(ctx context.Context, result *domain.
 	query := `
 		INSERT INTO build_results (
 			submission_id, compile_success, analyze_output,
+			build_success, build_output,
 			test_output, tests_passed, format_output,
 			format_correct, execution_time_ms
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at
 	`
 
@@ -41,6 +42,8 @@ func (r *buildRepository) CreateBuildResult(ctx context.Context, result *domain.
 		result.SubmissionID,
 		result.CompileSuccess,
 		result.AnalyzeOutput,
+		result.BuildSuccess,
+		result.BuildOutput,
 		result.TestOutput,
 		result.TestsPassed,
 		result.FormatOutput,
@@ -58,6 +61,7 @@ func (r *buildRepository) CreateBuildResult(ctx context.Context, result *domain.
 func (r *buildRepository) GetBuildResultBySubmissionID(ctx context.Context, submissionID int) (*domain.BuildResult, error) {
 	query := `
 		SELECT id, submission_id, compile_success, analyze_output,
+			   build_success, build_output,
 			   test_output, tests_passed, format_output, format_correct,
 			   execution_time_ms, created_at
 		FROM build_results
@@ -70,6 +74,8 @@ func (r *buildRepository) GetBuildResultBySubmissionID(ctx context.Context, subm
 		&result.SubmissionID,
 		&result.CompileSuccess,
 		&result.AnalyzeOutput,
+		&result.BuildSuccess,
+		&result.BuildOutput,
 		&result.TestOutput,
 		&result.TestsPassed,
 		&result.FormatOutput,

@@ -13,6 +13,7 @@ type Scheduler struct {
 	scheduler gocron.Scheduler
 	reviewUC  usecase.ReviewUseCase
 	logger    *zap.Logger
+	cancel    context.CancelFunc
 }
 
 const kSchedulerDurationJob = 1 * time.Minute
@@ -31,19 +32,23 @@ func NewScheduler(reviewUC usecase.ReviewUseCase, logger *zap.Logger) (*Schedule
 	}, nil
 }
 
-func (s *Scheduler) Start(ctx context.Context) error {
+func (s *Scheduler) Start(_ context.Context) error {
 	s.logger.Info("Starting scheduler")
+
+	appCtx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
 
 	_, err := s.scheduler.NewJob(
 		gocron.DurationJob(kSchedulerDurationJob),
 		gocron.NewTask(func() {
 			s.logger.Info("Running scheduled code review task")
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-			if err := s.reviewUC.ProcessPendingSubmissions(ctx); err != nil {
+			jobCtx, jobCancel := context.WithTimeout(appCtx, 45*time.Minute)
+			defer jobCancel()
+			if err := s.reviewUC.ProcessPendingSubmissions(jobCtx); err != nil {
 				s.logger.Error("Failed to process pending submissions", zap.Error(err))
 			}
 		}),
+		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 		gocron.WithStartAt(gocron.WithStartDateTime(time.Now().Add(kScheduleStartTimeJob))),
 	)
 
@@ -59,5 +64,8 @@ func (s *Scheduler) Start(ctx context.Context) error {
 
 func (s *Scheduler) Stop() error {
 	s.logger.Info("Stopping scheduler")
+	if s.cancel != nil {
+		s.cancel()
+	}
 	return s.scheduler.Shutdown()
 }
