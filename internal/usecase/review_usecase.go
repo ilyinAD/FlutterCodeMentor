@@ -203,7 +203,7 @@ func (uc *reviewUseCase) processGitHubSubmission(ctx context.Context, submission
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
-	//defer uc.githubService.Cleanup(repoPath)
+	defer uc.githubService.Cleanup(repoPath)
 
 	var buildOutput *service.BuildOutput
 	if uc.buildEnabled {
