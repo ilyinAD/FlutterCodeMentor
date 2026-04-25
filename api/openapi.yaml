@@ -260,10 +260,17 @@ paths:
       description: |
         Получить список посылок по задаче.
         Учитель видит все посылки в задаче, ученик — только свои.
+        Если указан student_id — возвращаются только посылки этого ученика.
       parameters:
         - name: task_id
           in: path
           required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: student_id
+          in: query
+          required: false
           schema:
             type: integer
             minimum: 1

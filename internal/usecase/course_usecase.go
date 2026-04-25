@@ -11,8 +11,17 @@ import (
 
 type CourseUseCase interface {
 	CreateCourse(ctx context.Context, req *CreateCourseRequest) (*CreateCourseResponse, error)
-	GetCourses(ctx context.Context, teacherID *int) ([]*CreateCourseResponse, error)
+	GetCourses(ctx context.Context, teacherID *int, studentID *int) ([]*CreateCourseResponse, error)
 	GetCourseByID(ctx context.Context, id int) (*CreateCourseResponse, error)
+	EnrollStudent(ctx context.Context, courseID, studentID int) (*EnrollmentDetail, bool, error)
+	GetEnrollments(ctx context.Context, courseID int) ([]*EnrollmentDetail, error)
+}
+
+type EnrollmentDetail struct {
+	CourseID    int
+	StudentID   int
+	StudentName string
+	EnrolledAt  time.Time
 }
 
 type courseUseCase struct {
@@ -102,14 +111,23 @@ func courseToResponse(c *domain.Course) *CreateCourseResponse {
 	}
 }
 
-func (uc *courseUseCase) GetCourses(ctx context.Context, teacherID *int) ([]*CreateCourseResponse, error) {
+func (uc *courseUseCase) GetCourses(ctx context.Context, teacherID *int, studentID *int) ([]*CreateCourseResponse, error) {
+	if teacherID != nil && studentID != nil {
+		return nil, &ValidationError{
+			Message: "teacher_id and student_id are mutually exclusive",
+		}
+	}
+
 	var (
 		courses []*domain.Course
 		err     error
 	)
-	if teacherID != nil {
+	switch {
+	case teacherID != nil:
 		courses, err = uc.courseRepo.GetByTeacherID(ctx, *teacherID)
-	} else {
+	case studentID != nil:
+		courses, err = uc.courseRepo.GetByStudentID(ctx, *studentID)
+	default:
 		courses, err = uc.courseRepo.GetAll(ctx)
 	}
 	if err != nil {
@@ -121,6 +139,73 @@ func (uc *courseUseCase) GetCourses(ctx context.Context, teacherID *int) ([]*Cre
 		responses = append(responses, courseToResponse(c))
 	}
 	return responses, nil
+}
+
+func (uc *courseUseCase) EnrollStudent(ctx context.Context, courseID, studentID int) (*EnrollmentDetail, bool, error) {
+	course, err := uc.courseRepo.GetByID(ctx, courseID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get course: %w", err)
+	}
+	if course == nil {
+		return nil, false, ErrCourseNotFound
+	}
+
+	student, err := uc.userRepo.GetByID(ctx, studentID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get student: %w", err)
+	}
+	if student == nil {
+		return nil, false, ErrUserNotFound
+	}
+	if student.Role != "student" {
+		return nil, false, ErrUnauthorized
+	}
+
+	enrollment, alreadyExisted, err := uc.courseRepo.CreateEnrollment(ctx, courseID, studentID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to enroll student: %w", err)
+	}
+
+	return &EnrollmentDetail{
+		CourseID:    enrollment.CourseID,
+		StudentID:   enrollment.StudentID,
+		StudentName: student.FirstName + " " + student.LastName,
+		EnrolledAt:  enrollment.EnrolledAt,
+	}, alreadyExisted, nil
+}
+
+func (uc *courseUseCase) GetEnrollments(ctx context.Context, courseID int) ([]*EnrollmentDetail, error) {
+	course, err := uc.courseRepo.GetByID(ctx, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get course: %w", err)
+	}
+	if course == nil {
+		return nil, ErrCourseNotFound
+	}
+
+	enrollments, err := uc.courseRepo.GetEnrollmentsByCourseID(ctx, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list enrollments: %w", err)
+	}
+
+	result := make([]*EnrollmentDetail, 0, len(enrollments))
+	for _, e := range enrollments {
+		student, err := uc.userRepo.GetByID(ctx, e.StudentID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get student: %w", err)
+		}
+		name := ""
+		if student != nil {
+			name = student.FirstName + " " + student.LastName
+		}
+		result = append(result, &EnrollmentDetail{
+			CourseID:    e.CourseID,
+			StudentID:   e.StudentID,
+			StudentName: name,
+			EnrolledAt:  e.EnrolledAt,
+		})
+	}
+	return result, nil
 }
 
 func (uc *courseUseCase) GetCourseByID(ctx context.Context, id int) (*CreateCourseResponse, error) {

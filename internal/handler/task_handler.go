@@ -100,8 +100,8 @@ func (h *TaskHandler) GetTasksTaskId(ctx echo.Context, taskID int) error {
 	return ctx.JSON(http.StatusOK, taskDetailToAPI(task))
 }
 
-func (h *TaskHandler) GetTasksTaskIdSubmissions(ctx echo.Context, taskID int) error {
-	submissions, err := h.submissionUseCase.GetSubmissionsByTaskID(ctx.Request().Context(), taskID)
+func (h *TaskHandler) GetTasksTaskIdSubmissions(ctx echo.Context, taskID int, params api.GetTasksTaskIdSubmissionsParams) error {
+	submissions, err := h.submissionUseCase.GetSubmissionsByTaskID(ctx.Request().Context(), taskID, params.StudentId)
 	if err != nil {
 		return h.handleError(ctx, err)
 	}

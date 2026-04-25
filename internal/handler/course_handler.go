@@ -75,7 +75,7 @@ func (h *CourseHandler) PostCourses(ctx echo.Context) error {
 }
 
 func (h *CourseHandler) GetCourses(ctx echo.Context, params api.GetCoursesParams) error {
-	courses, err := h.courseUseCase.GetCourses(ctx.Request().Context(), params.TeacherId)
+	courses, err := h.courseUseCase.GetCourses(ctx.Request().Context(), params.TeacherId, params.StudentId)
 	if err != nil {
 		return h.handleError(ctx, err)
 	}
@@ -85,6 +85,56 @@ func (h *CourseHandler) GetCourses(ctx echo.Context, params api.GetCoursesParams
 		response = append(response, courseToAPI(c))
 	}
 	return ctx.JSON(http.StatusOK, response)
+}
+
+type EnrollmentRequest struct {
+	StudentID int `json:"student_id" validate:"required,min=1"`
+}
+
+func (h *CourseHandler) PostCoursesCourseIdEnrollments(ctx echo.Context, courseID int) error {
+	var req EnrollmentRequest
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
+			Error: stringPtr("Invalid request body"),
+		})
+	}
+	if req.StudentID < 1 {
+		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
+			Error: stringPtr("student_id is required"),
+		})
+	}
+
+	enrollment, alreadyExisted, err := h.courseUseCase.EnrollStudent(ctx.Request().Context(), courseID, req.StudentID)
+	if err != nil {
+		return h.handleError(ctx, err)
+	}
+
+	status := http.StatusCreated
+	if alreadyExisted {
+		status = http.StatusOK
+	}
+	return ctx.JSON(status, enrollmentToAPI(enrollment))
+}
+
+func (h *CourseHandler) GetCoursesCourseIdEnrollments(ctx echo.Context, courseID int) error {
+	enrollments, err := h.courseUseCase.GetEnrollments(ctx.Request().Context(), courseID)
+	if err != nil {
+		return h.handleError(ctx, err)
+	}
+	response := make([]api.EnrollmentResponse, 0, len(enrollments))
+	for _, e := range enrollments {
+		response = append(response, enrollmentToAPI(e))
+	}
+	return ctx.JSON(http.StatusOK, response)
+}
+
+func enrollmentToAPI(e *usecase.EnrollmentDetail) api.EnrollmentResponse {
+	return api.EnrollmentResponse{
+		CourseId:    &e.CourseID,
+		StudentId:   &e.StudentID,
+		StudentName: &e.StudentName,
+		EnrolledAt:  &e.EnrolledAt,
+	}
 }
 
 func (h *CourseHandler) GetCoursesCourseId(ctx echo.Context, courseID int) error {

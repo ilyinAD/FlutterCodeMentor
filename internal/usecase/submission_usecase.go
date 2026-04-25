@@ -24,7 +24,7 @@ var (
 type SubmissionUseCase interface {
 	CreateSubmission(ctx context.Context, req *CreateSubmissionRequest) (*CreateSubmissionResponse, error)
 	GetSubmissionByID(ctx context.Context, id int) (*SubmissionDetail, error)
-	GetSubmissionsByTaskID(ctx context.Context, taskID int) ([]*SubmissionDetail, error)
+	GetSubmissionsByTaskID(ctx context.Context, taskID int, studentID *int) ([]*SubmissionDetail, error)
 }
 
 type submissionUseCase struct {
@@ -143,7 +143,7 @@ func (uc *submissionUseCase) GetSubmissionByID(ctx context.Context, id int) (*Su
 	return submissionToDetail(submission, user), nil
 }
 
-func (uc *submissionUseCase) GetSubmissionsByTaskID(ctx context.Context, taskID int) ([]*SubmissionDetail, error) {
+func (uc *submissionUseCase) GetSubmissionsByTaskID(ctx context.Context, taskID int, studentID *int) ([]*SubmissionDetail, error) {
 	task, err := uc.taskRepo.GetByID(ctx, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get task: %w", err)
@@ -152,7 +152,12 @@ func (uc *submissionUseCase) GetSubmissionsByTaskID(ctx context.Context, taskID 
 		return nil, ErrTaskNotFound
 	}
 
-	submissions, err := uc.submissionRepo.GetByTaskID(ctx, taskID)
+	var submissions []*domain.Submission
+	if studentID != nil {
+		submissions, err = uc.submissionRepo.GetByTaskAndStudent(ctx, taskID, *studentID)
+	} else {
+		submissions, err = uc.submissionRepo.GetByTaskID(ctx, taskID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to list submissions: %w", err)
 	}

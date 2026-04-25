@@ -72,6 +72,12 @@ type Course struct {
 	CreatedAt   time.Time
 }
 
+type Enrollment struct {
+	StudentID  int
+	CourseID   int
+	EnrolledAt time.Time
+}
+
 type CodeReview struct {
 	ID              int
 	SubmissionID    int
