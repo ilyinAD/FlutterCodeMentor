@@ -31,13 +31,22 @@ type BuildOutput struct {
 type buildService struct {
 	dockerImage string
 	timeout     time.Duration
+	snippetsDir string
 	logger      *zap.Logger
 }
 
 func NewBuildService(cfg *config.Config, logger *zap.Logger) BuildService {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	snippetsDir := filepath.Join(cwd, "snippets")
+	os.MkdirAll(snippetsDir, 0755)
+
 	return &buildService{
 		dockerImage: cfg.Build.DockerImage,
 		timeout:     time.Duration(cfg.Build.TimeoutSec) * time.Second,
+		snippetsDir: snippetsDir,
 		logger:      logger,
 	}
 }
@@ -64,7 +73,7 @@ func (s *buildService) BuildAndTest(ctx context.Context, projectPath string) (*B
 		"--memory=4096m", "--cpus=2", "--pids-limit=512",
 		"-v", projectPath+":/source:ro",
 		s.dockerImage,
-		"sh", "-c", "cp -r /source /app && cd /app && "+script,
+		"sh", "-c", "mkdir -p /app && cp -a /source/. /app/ && cd /app && "+script,
 	)
 
 	outputBytes, err := cmd.CombinedOutput()
@@ -97,9 +106,9 @@ func (s *buildService) BuildAndTest(ctx context.Context, projectPath string) (*B
 }
 
 func (s *buildService) BuildCodeSnippet(ctx context.Context, code string) (*BuildOutput, error) {
-	tmpDir, err := os.MkdirTemp("", "flutter-code-snippet-*")
+	tmpDir, err := os.MkdirTemp(s.snippetsDir, "snippet-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+		return nil, fmt.Errorf("failed to create snippet directory: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 

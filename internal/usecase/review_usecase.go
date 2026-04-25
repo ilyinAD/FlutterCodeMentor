@@ -19,6 +19,58 @@ var githubURLPattern = regexp.MustCompile(`^https?://github\.com/[\w-]+/[\w.-]+(
 
 type ReviewUseCase interface {
 	ProcessPendingSubmissions(ctx context.Context) error
+	GetReviewBySubmissionID(ctx context.Context, submissionID int) (*ReviewDetail, error)
+	SubmitTeacherReview(ctx context.Context, submissionID int, req *TeacherReviewInput) (*ReviewDetail, error)
+	GradeSubmission(ctx context.Context, submissionID int, score float64, comment *string) (*SubmissionDetail, error)
+}
+
+type ReviewDetail struct {
+	ID              int
+	SubmissionID    int
+	AIModel         string
+	OverallStatus   string
+	AIConfidence    *float64
+	ExecutionTimeMs *int
+	CreatedAt       time.Time
+	Feedbacks       []FeedbackDetail
+}
+
+type FeedbackDetail struct {
+	ID              int
+	ReviewID        int
+	FeedbackType    string
+	FilePath        *string
+	LineStart       int
+	LineEnd         *int
+	CodeSnippet     string
+	SuggestedFix    *string
+	Description     string
+	Severity        int
+	IsResolved      bool
+	TeacherComment  *string
+	TeacherApproved *bool
+}
+
+type TeacherReviewInput struct {
+	Actions          []FeedbackActionInput
+	TeacherFeedbacks []TeacherFeedbackInput
+}
+
+type FeedbackActionInput struct {
+	FeedbackID      int
+	TeacherApproved *bool
+	TeacherComment  *string
+}
+
+type TeacherFeedbackInput struct {
+	FeedbackType *string
+	FilePath     *string
+	LineStart    *int
+	LineEnd      *int
+	CodeSnippet  *string
+	SuggestedFix *string
+	Description  string
+	Severity     int
 }
 
 type reviewUseCase struct {
@@ -26,6 +78,7 @@ type reviewUseCase struct {
 	reviewRepo     repository.ReviewRepository
 	buildRepo      repository.BuildRepository
 	taskRepo       repository.TaskRepository
+	userRepo       repository.UserRepository
 	aiService      service.AIService
 	githubService  service.GitHubService
 	buildService   service.BuildService
@@ -38,6 +91,7 @@ func NewReviewUseCase(
 	reviewRepo repository.ReviewRepository,
 	buildRepo repository.BuildRepository,
 	taskRepo repository.TaskRepository,
+	userRepo repository.UserRepository,
 	aiService service.AIService,
 	githubService service.GitHubService,
 	buildService service.BuildService,
@@ -49,6 +103,7 @@ func NewReviewUseCase(
 		reviewRepo:     reviewRepo,
 		buildRepo:      buildRepo,
 		taskRepo:       taskRepo,
+		userRepo:       userRepo,
 		aiService:      aiService,
 		githubService:  githubService,
 		buildService:   buildService,
@@ -341,4 +396,149 @@ func (uc *reviewUseCase) saveReviewResult(ctx context.Context, submissionID int,
 	)
 
 	return nil
+}
+
+func (uc *reviewUseCase) GetReviewBySubmissionID(ctx context.Context, submissionID int) (*ReviewDetail, error) {
+	submission, err := uc.submissionRepo.GetByID(ctx, submissionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get submission: %w", err)
+	}
+	if submission == nil {
+		return nil, ErrSubmissionNotFound
+	}
+
+	review, err := uc.reviewRepo.GetCodeReviewBySubmissionID(ctx, submissionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get review: %w", err)
+	}
+	if review == nil {
+		return nil, ErrReviewNotFound
+	}
+
+	feedbacks, err := uc.reviewRepo.GetReviewFeedbackByReviewID(ctx, review.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get feedbacks: %w", err)
+	}
+
+	return buildReviewDetail(review, feedbacks), nil
+}
+
+func (uc *reviewUseCase) SubmitTeacherReview(ctx context.Context, submissionID int, req *TeacherReviewInput) (*ReviewDetail, error) {
+	review, err := uc.reviewRepo.GetCodeReviewBySubmissionID(ctx, submissionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get review: %w", err)
+	}
+	if review == nil {
+		return nil, ErrReviewNotFound
+	}
+
+	for _, action := range req.Actions {
+		feedback, err := uc.reviewRepo.GetFeedbackByID(ctx, action.FeedbackID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get feedback: %w", err)
+		}
+		if feedback == nil || feedback.ReviewID != review.ID {
+			return nil, fmt.Errorf("feedback %d does not belong to review", action.FeedbackID)
+		}
+		if err := uc.reviewRepo.UpdateFeedbackTeacherReview(ctx, action.FeedbackID, action.TeacherApproved, action.TeacherComment); err != nil {
+			return nil, fmt.Errorf("failed to update feedback: %w", err)
+		}
+	}
+
+	for _, tf := range req.TeacherFeedbacks {
+		feedbackType := "improvement"
+		if tf.FeedbackType != nil && *tf.FeedbackType != "" {
+			feedbackType = *tf.FeedbackType
+		}
+		lineStart := 1
+		if tf.LineStart != nil {
+			lineStart = *tf.LineStart
+		}
+		codeSnippet := ""
+		if tf.CodeSnippet != nil {
+			codeSnippet = *tf.CodeSnippet
+		}
+		approved := true
+		feedback := &domain.ReviewFeedback{
+			ReviewID:        review.ID,
+			FeedbackType:    feedbackType,
+			FilePath:        tf.FilePath,
+			LineStart:       lineStart,
+			LineEnd:         tf.LineEnd,
+			CodeSnippet:     codeSnippet,
+			SuggestedFix:    tf.SuggestedFix,
+			Description:     tf.Description,
+			Severity:        tf.Severity,
+			IsResolved:      false,
+			TeacherApproved: &approved,
+		}
+		if err := uc.reviewRepo.CreateReviewFeedback(ctx, feedback); err != nil {
+			return nil, fmt.Errorf("failed to create teacher feedback: %w", err)
+		}
+	}
+
+	feedbacks, err := uc.reviewRepo.GetReviewFeedbackByReviewID(ctx, review.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get feedbacks: %w", err)
+	}
+
+	return buildReviewDetail(review, feedbacks), nil
+}
+
+func (uc *reviewUseCase) GradeSubmission(ctx context.Context, submissionID int, score float64, comment *string) (*SubmissionDetail, error) {
+	submission, err := uc.submissionRepo.GetByID(ctx, submissionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get submission: %w", err)
+	}
+	if submission == nil {
+		return nil, ErrSubmissionNotFound
+	}
+
+	if err := uc.submissionRepo.UpdateScore(ctx, submissionID, score); err != nil {
+		return nil, fmt.Errorf("failed to update score: %w", err)
+	}
+	if err := uc.submissionRepo.UpdateStatus(ctx, submissionID, domain.StatusTeacherReviewed); err != nil {
+		return nil, fmt.Errorf("failed to update status: %w", err)
+	}
+
+	submission.Score = &score
+	submission.Status = domain.StatusTeacherReviewed
+
+	user, err := uc.userRepo.GetByID(ctx, submission.StudentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get student: %w", err)
+	}
+
+	return submissionToDetail(submission, user), nil
+}
+
+func buildReviewDetail(review *domain.CodeReview, feedbacks []*domain.ReviewFeedback) *ReviewDetail {
+	details := make([]FeedbackDetail, 0, len(feedbacks))
+	for _, f := range feedbacks {
+		details = append(details, FeedbackDetail{
+			ID:              f.ID,
+			ReviewID:        f.ReviewID,
+			FeedbackType:    f.FeedbackType,
+			FilePath:        f.FilePath,
+			LineStart:       f.LineStart,
+			LineEnd:         f.LineEnd,
+			CodeSnippet:     f.CodeSnippet,
+			SuggestedFix:    f.SuggestedFix,
+			Description:     f.Description,
+			Severity:        f.Severity,
+			IsResolved:      f.IsResolved,
+			TeacherComment:  f.TeacherComment,
+			TeacherApproved: f.TeacherApproved,
+		})
+	}
+	return &ReviewDetail{
+		ID:              review.ID,
+		SubmissionID:    review.SubmissionID,
+		AIModel:         review.AIModel,
+		OverallStatus:   review.OverallStatus,
+		AIConfidence:    review.AIConfidence,
+		ExecutionTimeMs: review.ExecutionTimeMs,
+		CreatedAt:       review.CreatedAt,
+		Feedbacks:       details,
+	}
 }

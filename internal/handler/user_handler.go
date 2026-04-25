@@ -62,14 +62,46 @@ func (h *UserHandler) PostUser(ctx echo.Context) error {
 		zap.String("email", resp.Email),
 	)
 
-	response := api.UserResponse{
+	return ctx.JSON(http.StatusCreated, userToResponse(resp))
+}
+
+type LoginUserRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+func (h *UserHandler) PostAuthLogin(ctx echo.Context) error {
+	var req LoginUserRequest
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
+			Error: stringPtr("Invalid request body"),
+		})
+	}
+
+	resp, err := h.userUseCase.Login(ctx.Request().Context(), req.Email, req.Password)
+	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidCredentials) {
+			return ctx.JSON(http.StatusUnauthorized, api.ApiError{
+				Error: stringPtr("Invalid credentials"),
+			})
+		}
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Internal server error",
+		})
+	}
+
+	return ctx.JSON(http.StatusOK, userToResponse(resp))
+}
+
+func userToResponse(resp *usecase.CreateUserResponse) api.UserResponse {
+	return api.UserResponse{
 		UserId:    &resp.UserID,
 		Email:     &resp.Email,
 		Role:      (*api.UserResponseRole)(&resp.Role),
+		FirstName: &resp.FirstName,
+		LastName:  &resp.LastName,
 		CreatedAt: &resp.CreatedAt,
 	}
-
-	return ctx.JSON(http.StatusCreated, response)
 }
 
 func (h *UserHandler) handleError(ctx echo.Context, err error) error {
@@ -97,6 +129,11 @@ func (h *UserHandler) handleError(ctx echo.Context, err error) error {
 		})
 	}
 
+	h.logger.Error("unhandled user error",
+		zap.String("path", ctx.Request().URL.Path),
+		zap.String("method", ctx.Request().Method),
+		zap.Error(err),
+	)
 	return ctx.JSON(http.StatusInternalServerError, map[string]string{
 		"error": "Internal server error",
 	})

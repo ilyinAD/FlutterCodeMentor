@@ -13,12 +13,14 @@ import (
 
 type CourseHandler struct {
 	courseUseCase usecase.CourseUseCase
+	taskUseCase   usecase.TaskUseCase
 	logger        *zap.Logger
 }
 
-func NewCourseHandler(courseUseCase usecase.CourseUseCase, logger *zap.Logger) *CourseHandler {
+func NewCourseHandler(courseUseCase usecase.CourseUseCase, taskUseCase usecase.TaskUseCase, logger *zap.Logger) *CourseHandler {
 	return &CourseHandler{
 		courseUseCase: courseUseCase,
+		taskUseCase:   taskUseCase,
 		logger:        logger,
 	}
 }
@@ -69,7 +71,44 @@ func (h *CourseHandler) PostCourses(ctx echo.Context) error {
 		zap.Int("course_id", resp.CourseID),
 	)
 
-	response := api.CourseResponse{
+	return ctx.JSON(http.StatusCreated, courseToAPI(resp))
+}
+
+func (h *CourseHandler) GetCourses(ctx echo.Context, params api.GetCoursesParams) error {
+	courses, err := h.courseUseCase.GetCourses(ctx.Request().Context(), params.TeacherId)
+	if err != nil {
+		return h.handleError(ctx, err)
+	}
+
+	response := make([]api.CourseResponse, 0, len(courses))
+	for _, c := range courses {
+		response = append(response, courseToAPI(c))
+	}
+	return ctx.JSON(http.StatusOK, response)
+}
+
+func (h *CourseHandler) GetCoursesCourseId(ctx echo.Context, courseID int) error {
+	course, err := h.courseUseCase.GetCourseByID(ctx.Request().Context(), courseID)
+	if err != nil {
+		return h.handleError(ctx, err)
+	}
+	return ctx.JSON(http.StatusOK, courseToAPI(course))
+}
+
+func (h *CourseHandler) GetCoursesCourseIdTasks(ctx echo.Context, courseID int) error {
+	tasks, err := h.taskUseCase.GetTasksByCourseID(ctx.Request().Context(), courseID)
+	if err != nil {
+		return h.handleError(ctx, err)
+	}
+	response := make([]api.TaskDetailResponse, 0, len(tasks))
+	for _, t := range tasks {
+		response = append(response, taskDetailToAPI(t))
+	}
+	return ctx.JSON(http.StatusOK, response)
+}
+
+func courseToAPI(resp *usecase.CreateCourseResponse) api.CourseResponse {
+	return api.CourseResponse{
 		CourseId:    &resp.CourseID,
 		TeacherId:   &resp.TeacherID,
 		Title:       &resp.Title,
@@ -79,8 +118,6 @@ func (h *CourseHandler) PostCourses(ctx echo.Context) error {
 		IsActive:    &resp.IsActive,
 		CreatedAt:   &resp.CreatedAt,
 	}
-
-	return ctx.JSON(http.StatusCreated, response)
 }
 
 func (h *CourseHandler) handleError(ctx echo.Context, err error) error {
@@ -114,6 +151,17 @@ func (h *CourseHandler) handleError(ctx echo.Context, err error) error {
 		})
 	}
 
+	if errors.Is(err, usecase.ErrCourseNotFound) {
+		return ctx.JSON(http.StatusNotFound, api.NotFound{
+			Error: stringPtr("Course not found"),
+		})
+	}
+
+	h.logger.Error("unhandled course error",
+		zap.String("path", ctx.Request().URL.Path),
+		zap.String("method", ctx.Request().Method),
+		zap.Error(err),
+	)
 	return ctx.JSON(http.StatusInternalServerError, map[string]string{
 		"error": "Internal server error",
 	})

@@ -17,7 +17,9 @@ var (
 )
 
 type TaskUseCase interface {
-	CreateTask(ctx context.Context, req *CreateTaskRequest) (*CreateTaskResponse, error)
+	CreateTask(ctx context.Context, req *CreateTaskRequest) (*TaskDetailResponse, error)
+	GetTaskByID(ctx context.Context, id int) (*TaskDetailResponse, error)
+	GetTasksByCourseID(ctx context.Context, courseID int) ([]*TaskDetailResponse, error)
 }
 
 type taskUseCase struct {
@@ -54,15 +56,27 @@ type TaskCriteriaRequest struct {
 	Weight               int
 }
 
-type CreateTaskResponse struct {
-	TaskID    int
-	CourseID  int
-	Title     string
-	Status    string
-	CreatedAt time.Time
+type TaskDetailResponse struct {
+	TaskID      int
+	CourseID    int
+	Title       string
+	Description string
+	Deadline    time.Time
+	MaxScore    int
+	Status      string
+	CreatedAt   time.Time
+	Criteria    []TaskCriteriaDetail
 }
 
-func (uc *taskUseCase) CreateTask(ctx context.Context, req *CreateTaskRequest) (*CreateTaskResponse, error) {
+type TaskCriteriaDetail struct {
+	ID                   int
+	CriterionName        string
+	CriterionDescription string
+	IsMandatory          bool
+	Weight               int
+}
+
+func (uc *taskUseCase) CreateTask(ctx context.Context, req *CreateTaskRequest) (*TaskDetailResponse, error) {
 	if err := uc.validateTaskRequest(req); err != nil {
 		return nil, err
 	}
@@ -88,8 +102,9 @@ func (uc *taskUseCase) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
+	criteria := make([]TaskCriteriaDetail, 0, len(req.Criteria))
 	for _, criteriaReq := range req.Criteria {
-		criteria := &domain.TaskCriteria{
+		c := &domain.TaskCriteria{
 			TaskID:               taskID,
 			CriterionName:        criteriaReq.CriterionName,
 			CriterionDescription: criteriaReq.CriterionDescription,
@@ -97,19 +112,103 @@ func (uc *taskUseCase) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			Weight:               criteriaReq.Weight,
 		}
 
-		_, err := uc.taskRepo.CreateCriteria(ctx, criteria)
+		criteriaID, err := uc.taskRepo.CreateCriteria(ctx, c)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task criteria: %w", err)
 		}
+
+		criteria = append(criteria, TaskCriteriaDetail{
+			ID:                   criteriaID,
+			CriterionName:        c.CriterionName,
+			CriterionDescription: c.CriterionDescription,
+			IsMandatory:          c.IsMandatory,
+			Weight:               c.Weight,
+		})
 	}
 
-	return &CreateTaskResponse{
-		TaskID:    taskID,
-		CourseID:  req.CourseID,
-		Title:     req.Title,
-		Status:    string(domain.TaskStatusActive),
-		CreatedAt: task.CreatedAt,
+	return &TaskDetailResponse{
+		TaskID:      taskID,
+		CourseID:    req.CourseID,
+		Title:       req.Title,
+		Description: req.Description,
+		Deadline:    req.Deadline,
+		MaxScore:    req.MaxScore,
+		Status:      string(domain.TaskStatusActive),
+		CreatedAt:   task.CreatedAt,
+		Criteria:    criteria,
 	}, nil
+}
+
+func (uc *taskUseCase) GetTaskByID(ctx context.Context, id int) (*TaskDetailResponse, error) {
+	task, err := uc.taskRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get task: %w", err)
+	}
+	if task == nil {
+		return nil, ErrTaskNotFound
+	}
+
+	criteria, err := uc.taskRepo.GetCriteriaByTaskID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get task criteria: %w", err)
+	}
+
+	return buildTaskDetail(task, criteria), nil
+}
+
+func (uc *taskUseCase) GetTasksByCourseID(ctx context.Context, courseID int) ([]*TaskDetailResponse, error) {
+	course, err := uc.courseRepo.GetByID(ctx, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get course: %w", err)
+	}
+	if course == nil {
+		return nil, ErrCourseNotFound
+	}
+
+	tasks, err := uc.taskRepo.GetByCourseID(ctx, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tasks: %w", err)
+	}
+
+	result := make([]*TaskDetailResponse, 0, len(tasks))
+	for _, t := range tasks {
+		criteria, err := uc.taskRepo.GetCriteriaByTaskID(ctx, t.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get task criteria: %w", err)
+		}
+		result = append(result, buildTaskDetail(t, criteria))
+	}
+	return result, nil
+}
+
+func buildTaskDetail(task *domain.Task, criteria []*domain.TaskCriteria) *TaskDetailResponse {
+	details := make([]TaskCriteriaDetail, 0, len(criteria))
+	for _, c := range criteria {
+		details = append(details, TaskCriteriaDetail{
+			ID:                   c.ID,
+			CriterionName:        c.CriterionName,
+			CriterionDescription: c.CriterionDescription,
+			IsMandatory:          c.IsMandatory,
+			Weight:               c.Weight,
+		})
+	}
+
+	status := string(domain.TaskStatusActive)
+	if task.Deadline.Before(time.Now()) {
+		status = string(domain.TaskStatusArchived)
+	}
+
+	return &TaskDetailResponse{
+		TaskID:      task.ID,
+		CourseID:    task.CourseID,
+		Title:       task.Title,
+		Description: task.Description,
+		Deadline:    task.Deadline,
+		MaxScore:    task.MaxScore,
+		Status:      status,
+		CreatedAt:   task.CreatedAt,
+		Criteria:    details,
+	}
 }
 
 func (uc *taskUseCase) validateTaskRequest(req *CreateTaskRequest) error {

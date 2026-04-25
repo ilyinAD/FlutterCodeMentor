@@ -17,10 +17,14 @@ var (
 	ErrInvalidGithubURL      = errors.New("invalid github URL format")
 	ErrTaskNotFound          = errors.New("task not found")
 	ErrUserNotFound          = errors.New("user not found")
+	ErrSubmissionNotFound    = errors.New("submission not found")
+	ErrReviewNotFound        = errors.New("review not found")
 )
 
 type SubmissionUseCase interface {
 	CreateSubmission(ctx context.Context, req *CreateSubmissionRequest) (*CreateSubmissionResponse, error)
+	GetSubmissionByID(ctx context.Context, id int) (*SubmissionDetail, error)
+	GetSubmissionsByTaskID(ctx context.Context, taskID int) ([]*SubmissionDetail, error)
 }
 
 type submissionUseCase struct {
@@ -52,6 +56,19 @@ type CreateSubmissionRequest struct {
 type CreateSubmissionResponse struct {
 	SubmissionID int
 	CreatedAt    time.Time
+}
+
+type SubmissionDetail struct {
+	SubmissionID   int
+	TaskID         int
+	UserID         int
+	StudentName    string
+	SubmissionType string
+	Code           *string
+	GithubURL      *string
+	Status         string
+	Score          *float64
+	CreatedAt      time.Time
 }
 
 type ValidationErrorDetail struct {
@@ -107,6 +124,67 @@ func (uc *submissionUseCase) CreateSubmission(ctx context.Context, req *CreateSu
 		SubmissionID: submissionID,
 		CreatedAt:    submission.SubmittedAt,
 	}, nil
+}
+
+func (uc *submissionUseCase) GetSubmissionByID(ctx context.Context, id int) (*SubmissionDetail, error) {
+	submission, err := uc.submissionRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get submission: %w", err)
+	}
+	if submission == nil {
+		return nil, ErrSubmissionNotFound
+	}
+
+	user, err := uc.userRepo.GetByID(ctx, submission.StudentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get student: %w", err)
+	}
+
+	return submissionToDetail(submission, user), nil
+}
+
+func (uc *submissionUseCase) GetSubmissionsByTaskID(ctx context.Context, taskID int) ([]*SubmissionDetail, error) {
+	task, err := uc.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get task: %w", err)
+	}
+	if task == nil {
+		return nil, ErrTaskNotFound
+	}
+
+	submissions, err := uc.submissionRepo.GetByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list submissions: %w", err)
+	}
+
+	result := make([]*SubmissionDetail, 0, len(submissions))
+	for _, s := range submissions {
+		user, err := uc.userRepo.GetByID(ctx, s.StudentID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get student: %w", err)
+		}
+		result = append(result, submissionToDetail(s, user))
+	}
+	return result, nil
+}
+
+func submissionToDetail(s *domain.Submission, user *domain.User) *SubmissionDetail {
+	studentName := ""
+	if user != nil {
+		studentName = user.FirstName + " " + user.LastName
+	}
+	return &SubmissionDetail{
+		SubmissionID:   s.ID,
+		TaskID:         s.TaskID,
+		UserID:         s.StudentID,
+		StudentName:    studentName,
+		SubmissionType: string(s.SubmissionType),
+		Code:           s.Code,
+		GithubURL:      s.GithubURL,
+		Status:         string(s.Status),
+		Score:          s.Score,
+		CreatedAt:      s.SubmittedAt,
+	}
 }
 
 func (uc *submissionUseCase) validateSubmissionRequest(req *CreateSubmissionRequest) error {

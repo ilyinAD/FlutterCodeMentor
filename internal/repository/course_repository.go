@@ -14,6 +14,7 @@ type CourseRepository interface {
 	Create(ctx context.Context, course *domain.Course) (int, error)
 	GetByID(ctx context.Context, id int) (*domain.Course, error)
 	GetByTeacherID(ctx context.Context, teacherID int) ([]*domain.Course, error)
+	GetAll(ctx context.Context) ([]*domain.Course, error)
 }
 
 type courseRepository struct {
@@ -111,6 +112,45 @@ func (r *courseRepository) GetByTeacherID(ctx context.Context, teacherID int) ([
 			return nil, fmt.Errorf("failed to scan course: %w", err)
 		}
 
+		courses = append(courses, course)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating courses: %w", err)
+	}
+
+	return courses, nil
+}
+
+func (r *courseRepository) GetAll(ctx context.Context) ([]*domain.Course, error) {
+	query := `
+		SELECT id, teacher_id, title, description, start_date, end_date, is_active, created_at
+		FROM courses
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query courses: %w", err)
+	}
+	defer rows.Close()
+
+	var courses []*domain.Course
+	for rows.Next() {
+		course := &domain.Course{}
+		err := rows.Scan(
+			&course.ID,
+			&course.TeacherID,
+			&course.Title,
+			&course.Description,
+			&course.StartDate,
+			&course.EndDate,
+			&course.IsActive,
+			&course.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan course: %w", err)
+		}
 		courses = append(courses, course)
 	}
 

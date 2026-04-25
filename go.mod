@@ -3,6 +3,8 @@ module github.com/ilyin-ad/flutter-code-mentor
 go 1.25.4
 
 require (
+	github.com/caarlos0/env/v11 v11.3.1
+	github.com/go-co-op/gocron/v2 v2.19.1
 	github.com/labstack/echo/v4 v4.14.0
 	github.com/oapi-codegen/runtime v1.1.2
 	go.uber.org/fx v1.23.0
@@ -10,8 +12,7 @@ require (
 )
 
 require (
-	github.com/caarlos0/env/v11 v11.3.1 // indirect
-	github.com/go-co-op/gocron/v2 v2.19.1 // indirect
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

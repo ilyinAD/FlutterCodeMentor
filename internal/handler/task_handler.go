@@ -12,14 +12,16 @@ import (
 )
 
 type TaskHandler struct {
-	taskUseCase usecase.TaskUseCase
-	logger      *zap.Logger
+	taskUseCase       usecase.TaskUseCase
+	submissionUseCase usecase.SubmissionUseCase
+	logger            *zap.Logger
 }
 
-func NewTaskHandler(taskUseCase usecase.TaskUseCase, logger *zap.Logger) *TaskHandler {
+func NewTaskHandler(taskUseCase usecase.TaskUseCase, submissionUseCase usecase.SubmissionUseCase, logger *zap.Logger) *TaskHandler {
 	return &TaskHandler{
-		taskUseCase: taskUseCase,
-		logger:      logger,
+		taskUseCase:       taskUseCase,
+		submissionUseCase: submissionUseCase,
+		logger:            logger,
 	}
 }
 
@@ -87,16 +89,53 @@ func (h *TaskHandler) PostTask(ctx echo.Context) error {
 		zap.Int("task_id", resp.TaskID),
 	)
 
-	status := api.Active
-	response := api.TaskResponse{
-		TaskId:    &resp.TaskID,
-		CourseId:  &resp.CourseID,
-		Title:     &resp.Title,
-		Status:    &status,
-		CreatedAt: &resp.CreatedAt,
-	}
+	return ctx.JSON(http.StatusCreated, taskDetailToAPI(resp))
+}
 
-	return ctx.JSON(http.StatusCreated, response)
+func (h *TaskHandler) GetTasksTaskId(ctx echo.Context, taskID int) error {
+	task, err := h.taskUseCase.GetTaskByID(ctx.Request().Context(), taskID)
+	if err != nil {
+		return h.handleError(ctx, err)
+	}
+	return ctx.JSON(http.StatusOK, taskDetailToAPI(task))
+}
+
+func (h *TaskHandler) GetTasksTaskIdSubmissions(ctx echo.Context, taskID int) error {
+	submissions, err := h.submissionUseCase.GetSubmissionsByTaskID(ctx.Request().Context(), taskID)
+	if err != nil {
+		return h.handleError(ctx, err)
+	}
+	response := make([]api.SubmissionDetailResponse, 0, len(submissions))
+	for _, s := range submissions {
+		response = append(response, submissionDetailToAPI(s))
+	}
+	return ctx.JSON(http.StatusOK, response)
+}
+
+func taskDetailToAPI(t *usecase.TaskDetailResponse) api.TaskDetailResponse {
+	criteria := make([]api.TaskCriteriaResponse, 0, len(t.Criteria))
+	for _, c := range t.Criteria {
+		c := c
+		criteria = append(criteria, api.TaskCriteriaResponse{
+			Id:                   &c.ID,
+			CriterionName:        &c.CriterionName,
+			CriterionDescription: &c.CriterionDescription,
+			IsMandatory:          &c.IsMandatory,
+			Weight:               &c.Weight,
+		})
+	}
+	status := api.TaskDetailResponseStatus(t.Status)
+	return api.TaskDetailResponse{
+		TaskId:      &t.TaskID,
+		CourseId:    &t.CourseID,
+		Title:       &t.Title,
+		Description: &t.Description,
+		Deadline:    &t.Deadline,
+		MaxScore:    &t.MaxScore,
+		Status:      &status,
+		CreatedAt:   &t.CreatedAt,
+		Criteria:    &criteria,
+	}
 }
 
 func (h *TaskHandler) handleError(ctx echo.Context, err error) error {
@@ -130,6 +169,17 @@ func (h *TaskHandler) handleError(ctx echo.Context, err error) error {
 		})
 	}
 
+	if errors.Is(err, usecase.ErrTaskNotFound) {
+		return ctx.JSON(http.StatusNotFound, api.NotFound{
+			Error: stringPtr("Task not found"),
+		})
+	}
+
+	h.logger.Error("unhandled task error",
+		zap.String("path", ctx.Request().URL.Path),
+		zap.String("method", ctx.Request().Method),
+		zap.Error(err),
+	)
 	return ctx.JSON(http.StatusInternalServerError, map[string]string{
 		"error": "Internal server error",
 	})

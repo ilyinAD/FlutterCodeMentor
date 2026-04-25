@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/ilyin-ad/flutter-code-mentor/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -15,6 +16,8 @@ type ReviewRepository interface {
 	CreateReviewFeedback(ctx context.Context, feedback *domain.ReviewFeedback) error
 	GetCodeReviewBySubmissionID(ctx context.Context, submissionID int) (*domain.CodeReview, error)
 	GetReviewFeedbackByReviewID(ctx context.Context, reviewID int) ([]*domain.ReviewFeedback, error)
+	GetFeedbackByID(ctx context.Context, id int) (*domain.ReviewFeedback, error)
+	UpdateFeedbackTeacherReview(ctx context.Context, id int, approved *bool, comment *string) error
 }
 
 type reviewRepository struct {
@@ -164,4 +167,65 @@ func (r *reviewRepository) GetReviewFeedbackByReviewID(ctx context.Context, revi
 	}
 
 	return feedbacks, nil
+}
+
+func (r *reviewRepository) GetFeedbackByID(ctx context.Context, id int) (*domain.ReviewFeedback, error) {
+	query := `
+		SELECT id, review_id, feedback_type, file_path, line_start, line_end,
+			   code_snippet, suggested_fix, description, severity,
+			   is_resolved, teacher_comment, teacher_approved, created_at
+		FROM review_feedback
+		WHERE id = $1
+	`
+
+	feedback := &domain.ReviewFeedback{}
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&feedback.ID,
+		&feedback.ReviewID,
+		&feedback.FeedbackType,
+		&feedback.FilePath,
+		&feedback.LineStart,
+		&feedback.LineEnd,
+		&feedback.CodeSnippet,
+		&feedback.SuggestedFix,
+		&feedback.Description,
+		&feedback.Severity,
+		&feedback.IsResolved,
+		&feedback.TeacherComment,
+		&feedback.TeacherApproved,
+		&feedback.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get review feedback: %w", err)
+	}
+
+	return feedback, nil
+}
+
+func (r *reviewRepository) UpdateFeedbackTeacherReview(ctx context.Context, id int, approved *bool, comment *string) error {
+	setParts := make([]string, 0, 2)
+	args := make([]any, 0, 3)
+
+	if approved != nil {
+		args = append(args, *approved)
+		setParts = append(setParts, fmt.Sprintf("teacher_approved = $%d", len(args)))
+	}
+	if comment != nil {
+		args = append(args, *comment)
+		setParts = append(setParts, fmt.Sprintf("teacher_comment = $%d", len(args)))
+	}
+	if len(setParts) == 0 {
+		return nil
+	}
+
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE review_feedback SET %s WHERE id = $%d", strings.Join(setParts, ", "), len(args))
+
+	if _, err := r.pool.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to update review feedback: %w", err)
+	}
+	return nil
 }

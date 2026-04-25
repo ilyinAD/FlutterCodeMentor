@@ -16,10 +16,12 @@ var (
 	ErrEmailAlreadyExists = errors.New("email already exists")
 	ErrInvalidEmail       = errors.New("invalid email format")
 	ErrWeakPassword       = errors.New("password must be at least 12 characters")
+	ErrInvalidCredentials = errors.New("invalid credentials")
 )
 
 type UserUseCase interface {
 	CreateUser(ctx context.Context, req *CreateUserRequest) (*CreateUserResponse, error)
+	Login(ctx context.Context, email, password string) (*CreateUserResponse, error)
 }
 
 type userUseCase struct {
@@ -44,6 +46,8 @@ type CreateUserResponse struct {
 	UserID    int
 	Email     string
 	Role      string
+	FirstName string
+	LastName  string
 	CreatedAt time.Time
 }
 
@@ -79,6 +83,28 @@ func (uc *userUseCase) CreateUser(ctx context.Context, req *CreateUserRequest) (
 		UserID:    userID,
 		Email:     req.Email,
 		Role:      req.Role,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		CreatedAt: user.CreatedAt,
+	}, nil
+}
+
+func (uc *userUseCase) Login(ctx context.Context, email, password string) (*CreateUserResponse, error) {
+	user, err := uc.userRepo.GetByEmail(ctx, email)
+	if err != nil || user == nil {
+		return nil, ErrInvalidCredentials
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return nil, ErrInvalidCredentials
+	}
+
+	return &CreateUserResponse{
+		UserID:    user.ID,
+		Email:     user.Email,
+		Role:      user.Role,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
 		CreatedAt: user.CreatedAt,
 	}, nil
 }

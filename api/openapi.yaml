@@ -4,52 +4,26 @@ info:
   version: "1.0"
 
 paths:
-  /submission:
+  /auth/login:
     post:
       description: |
-        Отправка посылки по задаче
+        Авторизация пользователя по email и паролю.
+        При успехе возвращает данные пользователя.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SubmissionRequest"
+              $ref: "#/components/schemas/LoginRequest"
       responses:
-        "201":
+        "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SubmissionResponse"
+                $ref: "#/components/schemas/UserResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationError"
-  /task:
-    post:
-      description: |
-        Создать задачу для курса. Создать задачу может только учитель.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TaskCreationRequest"
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TaskResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
+        "401":
           content:
             application/json:
               schema:
@@ -79,9 +53,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-  
+
   /courses:
+    get:
+      description: |
+        Получить список курсов.
+        Если указан teacher_id — только курсы этого учителя.
+        Если указан student_id — только курсы, на которые записан этот ученик.
+        Параметры взаимоисключающие.
+      parameters:
+        - name: teacher_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: student_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CourseResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
     post:
+      description: |
+        Создать новый курс. Доступно только учителю.
       requestBody:
         required: true
         content:
@@ -103,8 +108,318 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /courses/{course_id}:
+    get:
+      description: |
+        Получить детальную информацию о курсе по идентификатору.
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /courses/{course_id}/tasks:
+    get:
+      description: |
+        Получить список задач в курсе.
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /courses/{course_id}/enrollments:
+    post:
+      description: |
+        Записать ученика на курс. Идемпотентно: повторный вызов с тем же
+        student_id возвращает существующую запись.
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentRequest"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentResponse"
+        "200":
+          description: Ученик уже был записан на этот курс.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    get:
+      description: |
+        Получить список учеников, записанных на курс. Доступно учителю курса.
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EnrollmentResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /task:
+    post:
+      description: |
+        Создать задачу для курса. Создать задачу может только учитель.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreationRequest"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /tasks/{task_id}:
+    get:
+      description: |
+        Получить детальную информацию о задаче вместе со списком критериев.
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{task_id}/submissions:
+    get:
+      description: |
+        Получить список посылок по задаче.
+        Учитель видит все посылки в задаче, ученик — только свои.
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubmissionDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /submission:
+    post:
+      description: |
+        Отправка посылки по задаче
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionRequest"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+
+  /submissions/{submission_id}:
+    get:
+      description: |
+        Получить детальную информацию о посылке.
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /submissions/{submission_id}/reviews:
+    get:
+      description: |
+        Получить AI-ревью посылки со списком всех замечаний.
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodeReviewResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /submissions/{submission_id}/teacher-review:
+    post:
+      description: |
+        Учитель принимает/отклоняет замечания AI и/или добавляет собственные.
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeacherReviewRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodeReviewResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /submissions/{submission_id}/grade:
+    put:
+      description: |
+        Выставить итоговую оценку ученику. Доступно только учителю.
+        Переводит статус посылки в teacher_reviewed.
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GradeRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      additionalProperties: false
+
     SubmissionRequest:
       type: object
       required:
@@ -140,6 +455,36 @@ components:
           type: string
           enum: [pending, ai_reviewed, teacher_reviewed]
 
+    SubmissionDetailResponse:
+      type: object
+      properties:
+        submission_id:
+          type: integer
+        task_id:
+          type: integer
+        user_id:
+          type: integer
+        student_name:
+          type: string
+        submission_type:
+          type: string
+          enum: [code, github_link]
+        code:
+          type: string
+        github_url:
+          type: string
+          format: uri
+        status:
+          type: string
+          enum: [pending, ai_reviewed, teacher_reviewed]
+        score:
+          type: number
+          format: float
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+
     ValidationError:
       type: object
       properties:
@@ -154,7 +499,7 @@ components:
                 type: string
               message:
                 type: string
-    
+
     TaskCreationRequest:
       type: object
       required:
@@ -210,7 +555,21 @@ components:
           maximum: 100
           default: 10
 
-    TaskResponse:
+    TaskCriteriaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        criterion_name:
+          type: string
+        criterion_description:
+          type: string
+        is_mandatory:
+          type: boolean
+        weight:
+          type: integer
+
+    TaskDetailResponse:
       type: object
       properties:
         task_id:
@@ -219,12 +578,23 @@ components:
           type: integer
         title:
           type: string
+        description:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        max_score:
+          type: integer
         status:
           type: string
           enum: [active, archived]
         created_at:
           type: string
           format: date-time
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskCriteriaResponse"
 
     UserRegistrationRequest:
       type: object
@@ -264,6 +634,10 @@ components:
         role:
           type: string
           enum: [student, teacher, admin]
+        first_name:
+          type: string
+        last_name:
+          type: string
         created_at:
           type: string
           format: date-time
@@ -331,13 +705,167 @@ components:
           type: string
           format: date-time
 
+    EnrollmentRequest:
+      type: object
+      required:
+        - student_id
+      properties:
+        student_id:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+
+    EnrollmentResponse:
+      type: object
+      properties:
+        course_id:
+          type: integer
+        student_id:
+          type: integer
+        student_name:
+          type: string
+        enrolled_at:
+          type: string
+          format: date-time
+
+    CodeReviewResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        submission_id:
+          type: integer
+        ai_model:
+          type: string
+        overall_status:
+          type: string
+          enum: [passed, failed, needs_improvement, pending]
+        ai_confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        execution_time_ms:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        feedbacks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewFeedbackResponse"
+
+    ReviewFeedbackResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        review_id:
+          type: integer
+        feedback_type:
+          type: string
+        file_path:
+          type: string
+        line_start:
+          type: integer
+          minimum: 1
+        line_end:
+          type: integer
+          minimum: 1
+        code_snippet:
+          type: string
+        suggested_fix:
+          type: string
+        description:
+          type: string
+        severity:
+          type: integer
+          minimum: 1
+          maximum: 5
+        is_resolved:
+          type: boolean
+          default: false
+        teacher_comment:
+          type: string
+        teacher_approved:
+          type: boolean
+          nullable: true
+
+    TeacherReviewRequest:
+      type: object
+      properties:
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedbackAction"
+        teacher_feedbacks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeacherFeedbackRequest"
+      additionalProperties: false
+
+    FeedbackAction:
+      type: object
+      required:
+        - feedback_id
+      properties:
+        feedback_id:
+          type: integer
+          minimum: 1
+        teacher_approved:
+          type: boolean
+          nullable: true
+        teacher_comment:
+          type: string
+
+    TeacherFeedbackRequest:
+      type: object
+      required:
+        - description
+        - severity
+      properties:
+        feedback_type:
+          type: string
+        file_path:
+          type: string
+        line_start:
+          type: integer
+          minimum: 1
+        line_end:
+          type: integer
+          minimum: 1
+        code_snippet:
+          type: string
+        suggested_fix:
+          type: string
+        description:
+          type: string
+          minLength: 1
+        severity:
+          type: integer
+          minimum: 1
+          maximum: 5
+
+    GradeRequest:
+      type: object
+      required:
+        - score
+      properties:
+        score:
+          type: number
+          format: float
+          minimum: 0
+        comment:
+          type: string
+      additionalProperties: false
+
   responses:
     BadRequest:
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ValidationError"
-    
+
     NotFound:
       content:
         application/json:
@@ -346,7 +874,7 @@ components:
             properties:
               error:
                 type: string
-    
+
     Forbidden:
       content:
         application/json:

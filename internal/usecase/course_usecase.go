@@ -11,6 +11,8 @@ import (
 
 type CourseUseCase interface {
 	CreateCourse(ctx context.Context, req *CreateCourseRequest) (*CreateCourseResponse, error)
+	GetCourses(ctx context.Context, teacherID *int) ([]*CreateCourseResponse, error)
+	GetCourseByID(ctx context.Context, id int) (*CreateCourseResponse, error)
 }
 
 type courseUseCase struct {
@@ -85,4 +87,49 @@ func (uc *courseUseCase) CreateCourse(ctx context.Context, req *CreateCourseRequ
 		IsActive:    req.IsActive,
 		CreatedAt:   course.CreatedAt,
 	}, nil
+}
+
+func courseToResponse(c *domain.Course) *CreateCourseResponse {
+	return &CreateCourseResponse{
+		CourseID:    c.ID,
+		TeacherID:   c.TeacherID,
+		Title:       c.Title,
+		Description: c.Description,
+		StartDate:   c.StartDate,
+		EndDate:     c.EndDate,
+		IsActive:    c.IsActive,
+		CreatedAt:   c.CreatedAt,
+	}
+}
+
+func (uc *courseUseCase) GetCourses(ctx context.Context, teacherID *int) ([]*CreateCourseResponse, error) {
+	var (
+		courses []*domain.Course
+		err     error
+	)
+	if teacherID != nil {
+		courses, err = uc.courseRepo.GetByTeacherID(ctx, *teacherID)
+	} else {
+		courses, err = uc.courseRepo.GetAll(ctx)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list courses: %w", err)
+	}
+
+	responses := make([]*CreateCourseResponse, 0, len(courses))
+	for _, c := range courses {
+		responses = append(responses, courseToResponse(c))
+	}
+	return responses, nil
+}
+
+func (uc *courseUseCase) GetCourseByID(ctx context.Context, id int) (*CreateCourseResponse, error) {
+	course, err := uc.courseRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get course: %w", err)
+	}
+	if course == nil {
+		return nil, ErrCourseNotFound
+	}
+	return courseToResponse(course), nil
 }
