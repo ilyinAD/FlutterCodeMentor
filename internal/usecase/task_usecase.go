@@ -77,10 +77,6 @@ type TaskCriteriaDetail struct {
 }
 
 func (uc *taskUseCase) CreateTask(ctx context.Context, req *CreateTaskRequest) (*TaskDetailResponse, error) {
-	if err := uc.validateTaskRequest(req); err != nil {
-		return nil, err
-	}
-
 	course, err := uc.courseRepo.GetByID(ctx, req.CourseID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrCourseNotFound, err)
@@ -209,68 +205,4 @@ func buildTaskDetail(task *domain.Task, criteria []*domain.TaskCriteria) *TaskDe
 		CreatedAt:   task.CreatedAt,
 		Criteria:    details,
 	}
-}
-
-func (uc *taskUseCase) validateTaskRequest(req *CreateTaskRequest) error {
-	var details []ValidationErrorDetail
-
-	if req.CourseID < 1 {
-		details = append(details, ValidationErrorDetail{
-			Field:   "course_id",
-			Message: "Must be greater than 0",
-		})
-	}
-
-	if len(req.Title) < 1 {
-		details = append(details, ValidationErrorDetail{
-			Field:   "title",
-			Message: "Must be between 5 and 100 characters",
-		})
-	}
-
-	if req.Deadline.Before(time.Now()) {
-		details = append(details, ValidationErrorDetail{
-			Field:   "deadline",
-			Message: "Must be in the future",
-		})
-	}
-
-	if len(details) > 0 {
-		return &ValidationError{
-			Message: "Validation failed",
-			Details: details,
-		}
-	}
-
-	for i, criteria := range req.Criteria {
-		if len(criteria.CriterionName) < 1 {
-			details = append(details, ValidationErrorDetail{
-				Field:   fmt.Sprintf("criteria[%d].criterion_name", i),
-				Message: "Must be between 3 and 100 characters",
-			})
-		}
-
-		if len(criteria.CriterionDescription) < 10 {
-			details = append(details, ValidationErrorDetail{
-				Field:   fmt.Sprintf("criteria[%d].criterion_description", i),
-				Message: "Must be at least 10 characters",
-			})
-		}
-
-		if criteria.Weight < 1 || criteria.Weight > 100 {
-			details = append(details, ValidationErrorDetail{
-				Field:   fmt.Sprintf("criteria[%d].weight", i),
-				Message: "Must be between 1 and 100",
-			})
-		}
-	}
-
-	if len(details) > 0 {
-		return &ValidationError{
-			Message: "Validation failed",
-			Details: details,
-		}
-	}
-
-	return nil
 }

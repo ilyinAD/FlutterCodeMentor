@@ -25,9 +25,9 @@ func NewSubmissionHandler(submissionUseCase usecase.SubmissionUseCase, reviewUse
 }
 
 type CreateSubmissionRequest struct {
-	TaskID         int     `json:"task_id" validate:"required,min=1"`
-	UserID         int     `json:"user_id" validate:"required,min=1"`
-	SubmissionType string  `json:"submission_type" validate:"required,oneof=code github_link"`
+	TaskID         int     `json:"task_id"`
+	UserID         int     `json:"user_id"`
+	SubmissionType string  `json:"submission_type"`
 	Code           *string `json:"code,omitempty"`
 	GithubURL      *string `json:"github_url,omitempty"`
 }
@@ -209,24 +209,6 @@ func reviewDetailToAPI(r *usecase.ReviewDetail) api.CodeReviewResponse {
 }
 
 func (h *SubmissionHandler) handleError(ctx echo.Context, err error) error {
-	var validationErr *usecase.ValidationError
-	if errors.As(err, &validationErr) {
-		details := make([]struct {
-			Field   *string `json:"field,omitempty"`
-			Message *string `json:"message,omitempty"`
-		}, len(validationErr.Details))
-
-		for i, detail := range validationErr.Details {
-			details[i].Field = stringPtr(detail.Field)
-			details[i].Message = stringPtr(detail.Message)
-		}
-
-		return ctx.JSON(http.StatusUnprocessableEntity, api.ValidationError{
-			Error:   stringPtr(validationErr.Message),
-			Details: &details,
-		})
-	}
-
 	if errors.Is(err, usecase.ErrTaskNotFound) {
 		return ctx.JSON(http.StatusNotFound, api.NotFound{
 			Error: stringPtr("Task not found"),

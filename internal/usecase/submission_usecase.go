@@ -71,25 +71,7 @@ type SubmissionDetail struct {
 	CreatedAt      time.Time
 }
 
-type ValidationErrorDetail struct {
-	Field   string
-	Message string
-}
-
-type ValidationError struct {
-	Message string
-	Details []ValidationErrorDetail
-}
-
-func (e *ValidationError) Error() string {
-	return e.Message
-}
-
 func (uc *submissionUseCase) CreateSubmission(ctx context.Context, req *CreateSubmissionRequest) (*CreateSubmissionResponse, error) {
-	if err := uc.validateSubmissionRequest(req); err != nil {
-		return nil, err
-	}
-
 	task, err := uc.taskRepo.GetByID(ctx, req.TaskID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrTaskNotFound, err)
@@ -190,24 +172,4 @@ func submissionToDetail(s *domain.Submission, user *domain.User) *SubmissionDeta
 		Score:          s.Score,
 		CreatedAt:      s.SubmittedAt,
 	}
-}
-
-func (uc *submissionUseCase) validateSubmissionRequest(req *CreateSubmissionRequest) error {
-	var details []ValidationErrorDetail
-
-	if req.SubmissionType != string(domain.SubmissionTypeCode) && req.SubmissionType != string(domain.SubmissionTypeGithubLink) {
-		details = append(details, ValidationErrorDetail{
-			Field:   "submission_type",
-			Message: "Must be either 'code' or 'github_link'",
-		})
-	}
-
-	if len(details) > 0 {
-		return &ValidationError{
-			Message: "Validation failed",
-			Details: details,
-		}
-	}
-
-	return nil
 }

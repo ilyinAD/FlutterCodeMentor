@@ -113,9 +113,7 @@ func courseToResponse(c *domain.Course) *CreateCourseResponse {
 
 func (uc *courseUseCase) GetCourses(ctx context.Context, teacherID *int, studentID *int) ([]*CreateCourseResponse, error) {
 	if teacherID != nil && studentID != nil {
-		return nil, &ValidationError{
-			Message: "teacher_id and student_id are mutually exclusive",
-		}
+		return nil, fmt.Errorf("teacher_id and student_id are mutually exclusive")
 	}
 
 	var (

@@ -26,10 +26,10 @@ func NewCourseHandler(courseUseCase usecase.CourseUseCase, taskUseCase usecase.T
 }
 
 type CreateCourseRequest struct {
-	TeacherID   int        `json:"teacher_id" validate:"required,min=1"`
-	Title       string     `json:"title" validate:"required,min=3,max=100"`
+	TeacherID   int        `json:"teacher_id"`
+	Title       string     `json:"title"`
 	Description *string    `json:"description,omitempty"`
-	StartDate   time.Time  `json:"start_date" validate:"required"`
+	StartDate   time.Time  `json:"start_date"`
 	EndDate     *time.Time `json:"end_date,omitempty"`
 	IsActive    *bool      `json:"is_active,omitempty"`
 }
@@ -88,7 +88,7 @@ func (h *CourseHandler) GetCourses(ctx echo.Context, params api.GetCoursesParams
 }
 
 type EnrollmentRequest struct {
-	StudentID int `json:"student_id" validate:"required,min=1"`
+	StudentID int `json:"student_id"`
 }
 
 func (h *CourseHandler) PostCoursesCourseIdEnrollments(ctx echo.Context, courseID int) error {
@@ -96,11 +96,6 @@ func (h *CourseHandler) PostCoursesCourseIdEnrollments(ctx echo.Context, courseI
 	if err := ctx.Bind(&req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
 			Error: stringPtr("Invalid request body"),
-		})
-	}
-	if req.StudentID < 1 {
-		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
-			Error: stringPtr("student_id is required"),
 		})
 	}
 
@@ -171,24 +166,6 @@ func courseToAPI(resp *usecase.CreateCourseResponse) api.CourseResponse {
 }
 
 func (h *CourseHandler) handleError(ctx echo.Context, err error) error {
-	var validationErr *usecase.ValidationError
-	if errors.As(err, &validationErr) {
-		details := make([]struct {
-			Field   *string `json:"field,omitempty"`
-			Message *string `json:"message,omitempty"`
-		}, len(validationErr.Details))
-
-		for i, detail := range validationErr.Details {
-			details[i].Field = stringPtr(detail.Field)
-			details[i].Message = stringPtr(detail.Message)
-		}
-
-		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
-			Error:   stringPtr(validationErr.Message),
-			Details: &details,
-		})
-	}
-
 	if errors.Is(err, usecase.ErrUserNotFound) {
 		return ctx.JSON(http.StatusNotFound, api.ApiError{
 			Error: stringPtr("Teacher not found"),

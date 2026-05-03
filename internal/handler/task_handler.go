@@ -26,19 +26,19 @@ func NewTaskHandler(taskUseCase usecase.TaskUseCase, submissionUseCase usecase.S
 }
 
 type CreateTaskRequest struct {
-	CourseID    int                         `json:"course_id" validate:"required,min=1"`
-	Title       string                      `json:"title" validate:"required,min=5,max=100"`
-	Description string                      `json:"description" validate:"required,min=10"`
-	Deadline    time.Time                   `json:"deadline" validate:"required"`
-	MaxScore    int                         `json:"max_score" validate:"required,min=1,max=100"`
+	CourseID    int                         `json:"course_id"`
+	Title       string                      `json:"title"`
+	Description string                      `json:"description"`
+	Deadline    time.Time                   `json:"deadline"`
+	MaxScore    int                         `json:"max_score"`
 	Criteria    []CreateTaskCriteriaRequest `json:"criteria,omitempty"`
 }
 
 type CreateTaskCriteriaRequest struct {
-	CriterionName        string `json:"criterion_name" validate:"required,min=3,max=100"`
-	CriterionDescription string `json:"criterion_description" validate:"required,min=10"`
+	CriterionName        string `json:"criterion_name"`
+	CriterionDescription string `json:"criterion_description"`
 	IsMandatory          bool   `json:"is_mandatory"`
-	Weight               int    `json:"weight" validate:"required,min=1,max=100"`
+	Weight               int    `json:"weight"`
 }
 
 func (h *TaskHandler) PostTask(ctx echo.Context) error {
@@ -139,24 +139,6 @@ func taskDetailToAPI(t *usecase.TaskDetailResponse) api.TaskDetailResponse {
 }
 
 func (h *TaskHandler) handleError(ctx echo.Context, err error) error {
-	var validationErr *usecase.ValidationError
-	if errors.As(err, &validationErr) {
-		details := make([]struct {
-			Field   *string `json:"field,omitempty"`
-			Message *string `json:"message,omitempty"`
-		}, len(validationErr.Details))
-
-		for i, detail := range validationErr.Details {
-			details[i].Field = stringPtr(detail.Field)
-			details[i].Message = stringPtr(detail.Message)
-		}
-
-		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
-			Error:   stringPtr(validationErr.Message),
-			Details: &details,
-		})
-	}
-
 	if errors.Is(err, usecase.ErrCourseNotFound) {
 		return ctx.JSON(http.StatusNotFound, api.ApiError{
 			Error: stringPtr("Course not found"),

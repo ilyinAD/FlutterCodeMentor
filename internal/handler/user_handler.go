@@ -23,11 +23,11 @@ func NewUserHandler(userUseCase usecase.UserUseCase, logger *zap.Logger) *UserHa
 }
 
 type CreateUserRequest struct {
-	Email     string `json:"email" validate:"required,email"`
-	Password  string `json:"password" validate:"required,min=12"`
-	Role      string `json:"role" validate:"required,oneof=student teacher"`
-	FirstName string `json:"first_name" validate:"required,min=2,max=50"`
-	LastName  string `json:"last_name" validate:"required,min=2,max=50"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	Role      string `json:"role"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
 }
 
 func (h *UserHandler) PostUser(ctx echo.Context) error {
@@ -105,30 +105,6 @@ func userToResponse(resp *usecase.CreateUserResponse) api.UserResponse {
 }
 
 func (h *UserHandler) handleError(ctx echo.Context, err error) error {
-	var validationErr *usecase.ValidationError
-	if errors.As(err, &validationErr) {
-		details := make([]struct {
-			Field   *string `json:"field,omitempty"`
-			Message *string `json:"message,omitempty"`
-		}, len(validationErr.Details))
-
-		for i, detail := range validationErr.Details {
-			details[i].Field = stringPtr(detail.Field)
-			details[i].Message = stringPtr(detail.Message)
-		}
-
-		return ctx.JSON(http.StatusBadRequest, api.ValidationError{
-			Error:   stringPtr(validationErr.Message),
-			Details: &details,
-		})
-	}
-
-	if errors.Is(err, usecase.ErrEmailAlreadyExists) {
-		return ctx.JSON(http.StatusConflict, api.ApiError{
-			Error: stringPtr("Email already exists"),
-		})
-	}
-
 	h.logger.Error("unhandled user error",
 		zap.String("path", ctx.Request().URL.Path),
 		zap.String("method", ctx.Request().Method),
