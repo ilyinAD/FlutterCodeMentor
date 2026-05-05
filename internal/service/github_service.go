@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ilyin-ad/flutter-code-mentor/internal/config"
 	"go.uber.org/zap"
 )
 
@@ -24,12 +25,15 @@ type githubService struct {
 	tempDir string
 }
 
-func NewGitHubService(logger *zap.Logger) GitHubService {
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = "."
+func NewGitHubService(cfg *config.Config, logger *zap.Logger) GitHubService {
+	tempDir := cfg.Storage.ReposDir
+	if tempDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			cwd = "."
+		}
+		tempDir = filepath.Join(cwd, "repos")
 	}
-	tempDir := filepath.Join(cwd, "repos")
 	os.MkdirAll(tempDir, 0755)
 
 	return &githubService{

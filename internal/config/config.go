@@ -13,6 +13,12 @@ type Config struct {
 	Server   ServerConfig
 	AI       AIConfig
 	Build    BuildConfig
+	Storage  StorageConfig
+}
+
+type StorageConfig struct {
+	ReposDir    string `env:"STORAGE_REPOS_DIR" envDefault:""`
+	SnippetsDir string `env:"STORAGE_SNIPPETS_DIR" envDefault:""`
 }
 
 type BuildConfig struct {
@@ -22,12 +28,11 @@ type BuildConfig struct {
 }
 
 type AIConfig struct {
-	Provider    string `env:"AI_PROVIDER" envDefault:"deepseek"`
-	APIKey      string `env:"AI_API_KEY"`
-	BaseURL     string `env:"AI_BASE_URL" envDefault:"https://api.deepseek.com"`
-	Model       string `env:"AI_MODEL" envDefault:"deepseek-chat"`
-	LogPrompts  bool   `env:"AI_LOG_PROMPTS" envDefault:"false"`
-	PromptLogFile string `env:"AI_PROMPT_LOG_FILE" envDefault:"prompts.log"`
+	Provider   string `env:"AI_PROVIDER" envDefault:"deepseek"`
+	APIKey     string `env:"AI_API_KEY"`
+	BaseURL    string `env:"AI_BASE_URL" envDefault:"https://api.deepseek.com"`
+	Model      string `env:"AI_MODEL" envDefault:"deepseek-chat"`
+	LogPrompts bool   `env:"AI_LOG_PROMPTS" envDefault:"false"`
 }
 
 type DatabaseConfig struct {

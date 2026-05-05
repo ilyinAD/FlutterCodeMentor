@@ -36,11 +36,14 @@ type buildService struct {
 }
 
 func NewBuildService(cfg *config.Config, logger *zap.Logger) BuildService {
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = "."
+	snippetsDir := cfg.Storage.SnippetsDir
+	if snippetsDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			cwd = "."
+		}
+		snippetsDir = filepath.Join(cwd, "snippets")
 	}
-	snippetsDir := filepath.Join(cwd, "snippets")
 	os.MkdirAll(snippetsDir, 0755)
 
 	return &buildService{
@@ -58,12 +61,16 @@ func (s *buildService) BuildAndTest(ctx context.Context, projectPath string) (*B
 
 	script := s.buildScript(isFlutter)
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine app container id: %w", err)
+	}
+
 	s.logger.Info("Starting Docker build/test",
 		zap.String("project_path", projectPath),
 		zap.Bool("is_flutter", isFlutter),
 		zap.String("docker_image", s.dockerImage),
-		zap.String("script", script),
-		zap.String("docker_image", s.dockerImage),
+		zap.String("app_container", hostname),
 	)
 
 	buildCtx, cancel := context.WithTimeout(ctx, s.timeout)
@@ -71,9 +78,9 @@ func (s *buildService) BuildAndTest(ctx context.Context, projectPath string) (*B
 
 	cmd := exec.CommandContext(buildCtx, "docker", "run", "--rm",
 		"--memory=4096m", "--cpus=2", "--pids-limit=512",
-		"-v", projectPath+":/source:ro",
+		"--volumes-from", hostname+":ro",
 		s.dockerImage,
-		"sh", "-c", "mkdir -p /app && cp -a /source/. /app/ && cd /app && "+script,
+		"sh", "-c", "mkdir -p /app && cp -a "+projectPath+"/. /app/ && cd /app && "+script,
 	)
 
 	outputBytes, err := cmd.CombinedOutput()

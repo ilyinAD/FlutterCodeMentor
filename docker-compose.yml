@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-fcm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fcm}
+      POSTGRES_DB: ${DB_NAME:-flutter_code_mentor}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fcm} -d ${DB_NAME:-flutter_code_mentor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-fcm}
+      DB_PASSWORD: ${DB_PASSWORD:-fcm}
+      DB_NAME: ${DB_NAME:-flutter_code_mentor}
+      DB_SSLMODE: disable
+      SERVER_PORT: 8080
+      AI_PROVIDER: ${AI_PROVIDER:-deepseek}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com}
+      AI_MODEL: ${AI_MODEL:-deepseek-chat}
+      AI_LOG_PROMPTS: ${AI_LOG_PROMPTS:-false}
+      BUILD_ENABLED: ${BUILD_ENABLED:-true}
+      BUILD_DOCKER_IMAGE: ${BUILD_DOCKER_IMAGE:-ghcr.io/cirruslabs/flutter:stable}
+      BUILD_TIMEOUT_SEC: ${BUILD_TIMEOUT_SEC:-300}
+      STORAGE_REPOS_DIR: /app/repos
+      STORAGE_SNIPPETS_DIR: /app/snippets
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - app_repos:/app/repos
+      - app_snippets:/app/snippets
+
+volumes:
+  postgres_data:
+  app_repos:
+  app_snippets:

@@ -19,8 +19,8 @@ func FxModule() fx.Option {
 					client = NewOpenAICompatibleClient(cfg.AI.APIKey, cfg.AI.BaseURL, cfg.AI.Model, logger)
 				}
 				if cfg.AI.LogPrompts {
-					logger.Info("Prompt logging enabled", zap.String("log_file", cfg.AI.PromptLogFile))
-					client = NewLoggingLLMClient(client, cfg.AI.PromptLogFile, logger)
+					logger.Info("Prompt logging enabled")
+					client = NewLoggingLLMClient(client, logger)
 				}
 				return client
 			},
@@ -30,8 +30,8 @@ func FxModule() fx.Option {
 			func(cfg *config.Config, logger *zap.Logger) BuildService {
 				return NewBuildService(cfg, logger)
 			},
-			func(logger *zap.Logger) GitHubService {
-				return NewGitHubService(logger)
+			func(cfg *config.Config, logger *zap.Logger) GitHubService {
+				return NewGitHubService(cfg, logger)
 			},
 		),
 	)

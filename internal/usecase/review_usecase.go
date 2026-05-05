@@ -113,9 +113,9 @@ func NewReviewUseCase(
 }
 
 func (uc *reviewUseCase) ProcessPendingSubmissions(ctx context.Context) error {
-	submissions, err := uc.submissionRepo.GetPendingSubmissions(ctx)
+	submissions, err := uc.submissionRepo.ClaimPendingSubmissions(ctx, 10)
 	if err != nil {
-		return fmt.Errorf("failed to get pending submissions: %w", err)
+		return fmt.Errorf("failed to claim pending submissions: %w", err)
 	}
 
 	uc.logger.Info("Processing pending submissions", zap.Int("count", len(submissions)))
@@ -151,10 +151,6 @@ func (uc *reviewUseCase) processSubmission(ctx context.Context, submission *doma
 		zap.Int("submission_id", submission.ID),
 		zap.String("type", string(submission.SubmissionType)),
 	)
-
-	if err := uc.submissionRepo.UpdateStatus(ctx, submission.ID, domain.StatusProcessing); err != nil {
-		return fmt.Errorf("failed to set processing status: %w", err)
-	}
 
 	err := uc.doProcessSubmission(ctx, submission)
 	if err != nil {

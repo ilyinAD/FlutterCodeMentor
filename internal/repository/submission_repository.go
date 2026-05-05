@@ -16,7 +16,7 @@ type SubmissionRepository interface {
 	GetByID(ctx context.Context, id int) (*domain.Submission, error)
 	GetByTaskAndStudent(ctx context.Context, taskID, studentID int) ([]*domain.Submission, error)
 	GetByTaskID(ctx context.Context, taskID int) ([]*domain.Submission, error)
-	GetPendingSubmissions(ctx context.Context) ([]*domain.Submission, error)
+	ClaimPendingSubmissions(ctx context.Context, limit int) ([]*domain.Submission, error)
 	UpdateStatus(ctx context.Context, id int, status domain.SubmissionStatus) error
 	UpdateScore(ctx context.Context, id int, score float64) error
 }
@@ -129,18 +129,24 @@ func (r *submissionRepository) GetByTaskAndStudent(ctx context.Context, taskID, 
 	return submissions, nil
 }
 
-func (r *submissionRepository) GetPendingSubmissions(ctx context.Context) ([]*domain.Submission, error) {
+func (r *submissionRepository) ClaimPendingSubmissions(ctx context.Context, limit int) ([]*domain.Submission, error) {
 	query := `
-		SELECT id, student_id, task_id, code, github_url, submitted_at, score, status, submission_type
-		FROM submissions
-		WHERE status = $1
-		ORDER BY submitted_at ASC
-		LIMIT 10
+		WITH claimed AS (
+			SELECT id FROM submissions
+			WHERE status = $1
+			ORDER BY submitted_at ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE submissions
+		SET status = $3
+		WHERE id IN (SELECT id FROM claimed)
+		RETURNING id, student_id, task_id, code, github_url, submitted_at, score, status, submission_type
 	`
 
-	rows, err := r.pool.Query(ctx, query, domain.StatusPending)
+	rows, err := r.pool.Query(ctx, query, domain.StatusPending, limit, domain.StatusProcessing)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query pending submissions: %w", err)
+		return nil, fmt.Errorf("failed to claim pending submissions: %w", err)
 	}
 	defer rows.Close()
 
