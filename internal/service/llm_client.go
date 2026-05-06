@@ -52,7 +52,7 @@ func NewOpenAICompatibleClient(apiKey, baseURL, model string, logger *zap.Logger
 		baseURL: baseURL,
 		model:   model,
 		client: &http.Client{
-			Timeout: 9 * time.Minute,
+			Timeout: 10 * time.Minute,
 		},
 		logger: logger,
 	}

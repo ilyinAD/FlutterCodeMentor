@@ -130,7 +130,7 @@ func (uc *reviewUseCase) ProcessPendingSubmissions(ctx context.Context) error {
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			subCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			subCtx, cancel := context.WithTimeout(ctx, 35*time.Minute)
 			defer cancel()
 
 			if err := uc.processSubmission(subCtx, sub); err != nil {

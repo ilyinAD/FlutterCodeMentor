@@ -53,7 +53,7 @@ func (s *githubService) CloneRepository(ctx context.Context, githubURL string) (
 		os.RemoveAll(repoPath)
 	}
 
-	cloneCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	cloneCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(cloneCtx, "git", "clone", "--depth", "1", githubURL, repoPath)

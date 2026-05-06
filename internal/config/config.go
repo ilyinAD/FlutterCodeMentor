@@ -23,7 +23,7 @@ type StorageConfig struct {
 
 type BuildConfig struct {
 	DockerImage string `env:"BUILD_DOCKER_IMAGE" envDefault:"ghcr.io/cirruslabs/flutter:stable"`
-	TimeoutSec  int    `env:"BUILD_TIMEOUT_SEC" envDefault:"120"`
+	TimeoutSec  int    `env:"BUILD_TIMEOUT_SEC" envDefault:"1200"`
 	Enabled     bool   `env:"BUILD_ENABLED" envDefault:"false"`
 }
 

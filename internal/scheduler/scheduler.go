@@ -42,7 +42,7 @@ func (s *Scheduler) Start(_ context.Context) error {
 		gocron.DurationJob(kSchedulerDurationJob),
 		gocron.NewTask(func() {
 			s.logger.Info("Running scheduled code review task")
-			jobCtx, jobCancel := context.WithTimeout(appCtx, 45*time.Minute)
+			jobCtx, jobCancel := context.WithTimeout(appCtx, 3*time.Hour)
 			defer jobCancel()
 			if err := s.reviewUC.ProcessPendingSubmissions(jobCtx); err != nil {
 				s.logger.Error("Failed to process pending submissions", zap.Error(err))
